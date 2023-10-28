@@ -25,6 +25,7 @@ dependencies:
   - googledrivedownloader=0.4
   - matplotlib=3.7.1
   - pip=23.1.2
+  - biopython=1.78
   - pip:
     - timeout_decorator
     - "--find-links https://download.pytorch.org/whl/torch_stable.html"
