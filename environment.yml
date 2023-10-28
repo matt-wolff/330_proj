@@ -36,3 +36,4 @@ dependencies:
     - transformers==4.31.0
     - datasets==2.13.1
     - numpy==1.25.1
+    - pcmap
