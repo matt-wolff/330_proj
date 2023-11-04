@@ -38,3 +38,4 @@ dependencies:
     - datasets==2.13.1
     - numpy==1.25.1
     - pcmap
+    - fair-esm==2.0.0
