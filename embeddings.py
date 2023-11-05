@@ -20,8 +20,7 @@ def representations(data):
 def Embeddings2D(token_representations, batch_lens):
     SeqReps2D = []
     for i, tokens_len in enumerate(batch_lens):
-        rep = token_representations[i, 1 : tokens_len - 1]
-        SeqReps2D.append(rep)
+        SeqReps2D.append(token_representations[i, 1 : tokens_len - 1])
     return SeqReps2D
 
 def Embeddings1D(token_representations, batch_lens):
