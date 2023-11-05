@@ -14,7 +14,7 @@ def order(pair):
 
 def buildContactGraph(PDBcode):
     cmap = pcmap.contactMap("data/"+PDBcode+".pdb", dist=8.0)
-    pdb.set_trace()
+    #pdb.set_trace()
     # TODO distance parameter
 
     contacts = [] # Do note this has contacts in either direction and including backbone
