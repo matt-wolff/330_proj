@@ -28,26 +28,28 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
             norm = None
         )
 
-    def forward(self, protFileCode, chainLengths):
+    def forward(self, x, protFileCodes, chainLengths):
         chainIDs = ["A"] # Fix for multichain TODO
         #print(x.shape)
         #print(self.cm.edge_index.shape)
         #print(self.cm.shape)
-        builtContactGraph = buildContactGraph(protFileCode)
-
-        
-        edgeList = []
-        for con in cg:
-            edgeList.append(torch.tensor([parseNode(chainIDs, chainLengths, con[0]), parseNode(chainIDs, chainLengths, con[1])]))
-        CM = torch.stack(edgeList, dim=1) # 
+        CMs = list()
+        for protFileCode in protFileCodes:
+            builtContactGraph = append(buildContactGraph(protFileCode))
+            edgeList = []
+            for con in cg:
+                edgeList.append(torch.tensor([parseNode(chainIDs, chainLength, con[0]), parseNode(chainIDs, chainLength, con[1])]))
+            
+            CM = torch.stack(edgeList, dim=1) # 
+            CMs.append(CM)
+        CMs = torch.stack(CMs, dim=0)
         #self.cm = Data(CM.contiguous()).edge_index
         #self.cm = CM
 
-        print(self.gat(x, CM).shape)
+        return self.gat(x, CMs)
 
 class mainModel(nn.Module):
-    def __init__(self, batchSize):
-        self.batchSize = batchSize
+    def __init__(self):
 
         proteinSeqReader = csv.DictReader(csvFileName)
         proteinSeqs = dict()
@@ -84,16 +86,16 @@ class mainModel(nn.Module):
 
 
 
-    def forward(self, protFileCode): # TODO batch support inEmbed and GAT Parts; the other parts should be compatible
+    def forward(self, protFileCodes): 
         # Embed Part
-        seq = self.proteinSeqs(protFileCode)
-        embed2D = Embeddings2D(seq, self.batchSize)
-        embed1D = Embeddings1D(seq, self.batchSize)
+        seqs = [self.proteinSeqs[protFileCode] for protFileCode in protFileCodes]
+        embed2D = Embeddings2D(seqs, len(seqs))
+        embed1D = Embeddings1D(seqs, len(seqs))
 
         # GAT part
-        gatOut = self.gat(protFileCode, len(seq))
+        gatOut = self.gat(embed2D, protFileCodes, [[len(seq)] for seq in seqs])
         gatReadable = self.preReadout(gatOut)
-        gatRead = torch.mean(gatReadable, dim=2)
+        gatRead = torch.mean(gatReadable, dim=1)
 
         # Seq Transform Part
         transformIn = self.preTransform(embed2D)
@@ -110,17 +112,17 @@ class mainModel(nn.Module):
 
         #TODO some manner of saving this shit for KNN & classification
 
-model = GatFCM()
+#model = GatFCM()
 #X = torch.zeros(())
 #print(model(X).shape)
-chainIDs = ["A"]
-chainLengths = [1000]
-cg = buildContactGraph("AF-L0R819-F1-model_v4")
+#chainIDs = ["A"]
+#chainLengths = [1000]
+#cg = buildContactGraph("AF-L0R819-F1-model_v4")
 #edgeList = []
 #CM = torch.stack(edgeList, dim=1) # 
 
 gat = GatFCM(chainIDs, chainLengths, cg)
-
-gat(torch.zeros(1000,1028))
+gat([,]) # TODO test codes
+#gat(torch.zeros(1000,1028))
 #print(CM.contiguous())
 
