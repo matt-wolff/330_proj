@@ -48,7 +48,7 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
 
         return self.gat(x, CMs)
 
-class mainModel(nn.Module):
+class ProteinEmbedder(nn.Module):
     def __init__(self, csvSeqDataFile):
         super().__init__()
 
@@ -119,7 +119,7 @@ class knnClassifier (nn.Module):
         super().__init__()
         self.batchSize = batchSize
         #self.k = k
-        self.model = mainModel(csvSeqFile)
+        self.model = ProteinEmbedder(csvSeqFile)
 
     def forward (self, posUniProtIDs, negUniProtIDs, queryUniProtIDs):
         posEmbeds = []
@@ -171,6 +171,6 @@ class knnClassifier (nn.Module):
 if "__main__" == __name__:
     import pdb
     pdb.set_trace()
-    dummy = mainModel("data/residues.csv")
+    dummy = ProteinEmbedder("data/residues.csv")
     res = dummy(["Q04656","P78413"])
     print(res.shape)
