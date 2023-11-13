@@ -6,15 +6,20 @@ import ast
 import random
 import torch.nn.functional as F
 
-TRAIN_PATH = 'data/go_tasks.csv'
-VAL_PATH = 'data/go_tasks.csv'
+# TRAIN_PATH = 'data/go_tasks.csv'
+# VAL_PATH = 'data/go_tasks.csv'
+PATH = 'data/go_tasks.csv'
 with open('data/residues.json', 'r') as f:
   ID_TO_RESIDUES = json.load(f)
 
-train_df = pd.read_csv(TRAIN_PATH, encoding='utf-8')
-val_df = pd.read_csv(VAL_PATH, encoding='utf-8')
+df = pd.read_csv(PATH, encoding='utf-8')
+num_tasks, _ = df.shape # Note: _ = 3.
+# I chose a random split, we can modify this
+train_df = df[:int(0.6*num_tasks)]
+val_df = df[int(0.6*num_tasks):int(0.8*num_tasks)]
+test_df = df[int(0.8*num_tasks):]
 learning_rates = [1e-6, 5e-6, 1e-5]
-num_epochs = 5
+num_epochs = 5 # Should we modify the number of epochs?
 
 for lr in learning_rates:
     ball = ballClassifier(batchSize=8, jsonSeqFile='data/residues.json')
