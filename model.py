@@ -35,7 +35,7 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
         #print(self.cm.shape)
         CMs = list()
         for protFileCode in protFileCodes:
-            builtContactGraph = append(buildContactGraph(protFileCode))
+            cg = buildContactGraph(protFileCode)
             edgeList = []
             for con in cg:
                 edgeList.append(torch.tensor([parseNode(chainIDs, chainLength, con[0]), parseNode(chainIDs, chainLength, con[1])]))
@@ -114,7 +114,7 @@ class ProteinEmbedder(nn.Module):
 
         return projected
 
-class knnClassifier (nn.Module):
+class prototypeClassifier (nn.Module):
     def __init__ (self, batchSize, csvSeqFile):
         super().__init__()
         self.batchSize = batchSize
@@ -151,8 +151,39 @@ class knnClassifier (nn.Module):
         
         return queryDists.T # [numExamples, 2]
 
-        
+class ballClassifier (nn.Module) :
+    def __init__ (self, batchSize, csvSeqFile):
+        super().__init__()
+        self.radius = nn.Parameter(torch.ones(1))
+        self.model = ProteinEmbedder(csvSeqFile)
 
+    def forward (self, posUniProtIDs, queryUniProtIDs):
+        posEmbeds = []
+        for batch_start in range(0, len(posUniProtIDs), self.batchSize):
+            batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
+            posEmbeds.append(self.model(batchIDs))
+        posEmbeddings = torch.cat(posEmbeds, dim=0)
+        posPrototype = torch.mean(posEmbeddings, dim=1)
+
+        queryEmbeds = []
+        for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
+            batchIDs = queryUniProtIDs[batch_start:batch_start+self.batchSize]
+            queryEmbeds.append(self.model(batchIDs))
+        queryEmbeddings = torch.cat(queryEmbeds, dim=0)
+
+        queryDists = queryEmbeddings - posPrototype.reshape((1,-1))
+        queryDists = torch.pow(queryDists, 2)
+        queryDists = torch.sum(queryDists, dim=1)
+        queryDists = torch.sqrt(queryDists) # [numExamples]
+
+        coeff = torch.log(torch.tensor([2])) / self.radius
+        probInside = torch.exp(-queryDists * coeff)
+        probOutside = torch.ones(probInside.shape) - probInside
+        probs = torch.stack((probInside, probOutside), dim[1])
+        
+        return probs # [numExamples, 2]
+
+    
 
 #model = GatFCM()
 #X = torch.zeros(())
