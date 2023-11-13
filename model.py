@@ -90,8 +90,8 @@ class mainModel(nn.Module):
     def forward(self, protFileCodes): 
         # Embed Part
         seqs = [self.proteinSeqs[protFileCode] for protFileCode in protFileCodes]
-        embed2D = Embeddings2D(seqs, len(seqs))
-        embed1D = Embeddings1D(seqs, len(seqs))
+        embed2D = Embeddings2D(seqs)
+        embed1D = Embeddings1D(seqs)
 
         # GAT part
         gatOut = self.gat(embed2D, protFileCodes, [[len(seq)] for seq in seqs])
@@ -111,7 +111,47 @@ class mainModel(nn.Module):
         combinedOut = self.postCombination(combined)
         projected = self.projection(combinedOut)
 
-        #TODO some manner of saving this shit for KNN & classification
+        return projected
+
+class knnClassifier (nn.Module):
+    def __init__ (self, batchSize, k):
+        super().__init__()
+        self.batchSize = batchSize
+        self.k = k
+        self.model = mainModel()
+
+    def forward (self, posUniProtIDs, negUniProtIDs, queryUniProtIDs):
+        posEmbeds = []
+        for batch_start in range(0, len(posUniProtIDs), self.batchSize):
+            batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
+            posEmbeds.append(self.model(batchIDs))
+        posEmbeddings = torch.cat(posEmbeds, dim=0)
+        posPrototype = torch.mean(posEmbeddings, dim=1)
+
+        negEmbeds = []
+        for batch_start in range(0, len(negUniProtIDs), self.batchSize):
+            batchIDs = negUniProtIDs[batch_start:batch_start+self.batchSize]
+            negEmbeds.append(self.model(batchIDs))
+        negEmbeddings = torch.cat(negEmbeds, dim=0)
+        negPrototype = torch.mean(negEmbeddings, dim=1)
+
+        queryEmbeds = []
+        for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
+            batchIDs = queryUniProtIDs[batch_start:batch_start+self.batchSize]
+            queryEmbeds.append(self.model(batchIDs))
+        queryEmbeddings = torch.cat(queryEmbeds, dim=0)
+
+        queryDists = torch.stack((queryEmbeddings, queryEmbedding), dim=0)
+        queryDists[0,:,:] = queryDists[0,:,:] - posPrototype.reshape((1,-1))
+        queryDists[1,:,:] = queryDists[1,:,:] - negPrototype.reshape((1,-1))
+        queryDists = torch.pow(queryDists, 2)
+        queryDists = torch.sum(queryDists, dim=2)
+        # Now QueryDists is [2, numExamples], treat logits
+        
+        return queryDists.T # [numExamples, 2]
+
+        
+
 
 #model = GatFCM()
 #X = torch.zeros(())
@@ -122,8 +162,10 @@ class mainModel(nn.Module):
 #edgeList = []
 #CM = torch.stack(edgeList, dim=1) # 
 
-gat = GatFCM(chainIDs, chainLengths, cg)
-gat([,]) # TODO test codes
+#gat = GatFCM(chainIDs, chainLengths, cg)
+#gat([,]) # TODO test codes
 #gat(torch.zeros(1000,1028))
 #print(CM.contiguous())
 
+if "__main__" == __name__:
+    pass 
