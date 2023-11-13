@@ -114,10 +114,10 @@ class ProteinEmbedder(nn.Module):
         return projected
 
 class knnClassifier (nn.Module):
-    def __init__ (self, batchSize, k):
+    def __init__ (self, batchSize):
         super().__init__()
         self.batchSize = batchSize
-        self.k = k
+        #self.k = k
         self.model = mainModel()
 
     def forward (self, posUniProtIDs, negUniProtIDs, queryUniProtIDs):
@@ -168,4 +168,8 @@ class knnClassifier (nn.Module):
 #print(CM.contiguous())
 
 if "__main__" == __name__:
-    pass 
+    dummy = mainModel()
+    import pdb
+    pdb.set_trace()
+    res = dummy(["A1L157","Q3KNS6"])
+    print(res.shape)

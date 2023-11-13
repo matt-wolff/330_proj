@@ -18,7 +18,7 @@ def representations(data):
     return token_representations, batch_lens
 
 def Embeddings2D(sequences):
-    data = {f'protein{k}':sequences[k] for k in range(len(sequences))}
+    data = [(f'protein{k}', sequences[k]) for k in range(len(sequences))]
     token_representations, batch_lens = representations(data)
     SeqReps2D = []
     for i, tokens_len in enumerate(batch_lens):
@@ -26,7 +26,7 @@ def Embeddings2D(sequences):
     return SeqReps2D
 
 def Embeddings1D(sequences):
-    data = {f'protein{k}':sequences[k] for k in range(len(sequences))}
+    data = [(f'protein{k}', sequences[k]) for k in range(len(sequences))]
     token_representations, batch_lens = representations(data)
     SeqReps1D = []
     for i, tokens_len in enumerate(batch_lens):
