@@ -53,6 +53,7 @@ class mainModel(nn.Module):
 
         proteinSeqReader = csv.DictReader(csvFileName)
         proteinSeqs = dict()
+        proteinSeqReader = proteinSeqReader[1:]
         for row in proteinSeqReader:
             proteinSeqs[row[0]] = row[1]
         self.proteinSeqs = proteinSeqs
