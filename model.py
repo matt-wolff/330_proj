@@ -49,14 +49,9 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
         return self.gat(x, CMs)
 
 class ProteinEmbedder(nn.Module):
-    def __init__(self, csvSeqDataFile):
+    def __init__(self):
         super().__init__()
 
-        proteinSeqReader = csv.DictReader(open(csvSeqDataFile))
-        proteinSeqs = dict()
-        for row in proteinSeqReader:
-            proteinSeqs[row["UniProtKB Object ID"]] = row["Residues"]
-        self.proteinSeqs = proteinSeqs
         
         self.gat = GatFCM()
         self.preReadout = nn.Linear(256, 256) 
@@ -87,15 +82,13 @@ class ProteinEmbedder(nn.Module):
 
 
 
-    def forward(self, protFileCodes): 
-        # Embed Part
-        seqs = [self.proteinSeqs[protFileCode] for protFileCode in protFileCodes]
+    def forward(self, uniprot_ids, residues):
         with torch.no_grad():
-            embed2D = Embeddings2D(seqs)
-            embed1D = Embeddings1D(seqs)
+            embed2D = Embeddings2D(residues)
+            embed1D = Embeddings1D(residues)
 
         # GAT part
-        gatOut = self.gat(embed2D, protFileCodes, [[len(seq)] for seq in seqs])
+        gatOut = self.gat(embed2D, uniprot_ids, [[len(seq)] for seq in residues])
         gatReadable = self.preReadout(gatOut)
         gatRead = torch.mean(gatReadable, dim=1)
 
