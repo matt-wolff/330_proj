@@ -48,7 +48,7 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
 
         return self.gat(x, CMs)
 
-class mainModel(nn.Module):
+class ProteinEmbedder(nn.Module):
     def __init__(self):
 
         proteinSeqReader = csv.DictReader(csvFileName)
