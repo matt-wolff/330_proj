@@ -1,6 +1,6 @@
 import pandas as pd
 import torch.optim as optim
-from model import ProteinEmbedder, knnClassifier
+from model import ballClassifier
 import json
 import ast
 import random
@@ -16,9 +16,8 @@ learning_rates = [1e-6, 5e-6, 1e-5]
 num_epochs = 5
 
 for lr in learning_rates:
-    embedder = ProteinEmbedder()
-    # knn = knnClassifier(batchSize=16)  # output is [numExamples, 2]
-    optimizer = optim.AdamW(embedder.parameters(), lr=lr)
+    ball = ballClassifier(batchSize=8, jsonSeqFile='data/residues.json')
+    optimizer = optim.AdamW(ball.parameters(), lr=lr)
     train_losses, val_losses = [], []
     for epoch in range(num_epochs):
         train_loss = 0
@@ -30,16 +29,7 @@ for lr in learning_rates:
             support_ids = rand_pos_ids[:5]
             query_pos_ids = rand_pos_ids[5:]
             query_neg_ids = random.sample(neg_ids, k=3)
-
-            support_residues = [ID_TO_RESIDUES[protein_id] for protein_id in support_ids]
-            query_pos_residues = [ID_TO_RESIDUES[protein_id] for protein_id in query_pos_ids]
-            query_neg_residues = [ID_TO_RESIDUES[protein_id] for protein_id in query_neg_ids]
-
-            embeddings = embedder(support_residues + query_pos_residues + query_neg_residues,
-                                  support_ids + query_pos_ids + query_pos_ids)
-            support_embeddings = embeddings[:len(support_residues)]
-            query_pos_embeddings = embeddings[len(support_residues):len(support_residues)+len(pos_ids)]
-            query_neg_embeddings = embeddings[len(support_residues)+len(pos_ids):]
+            probs = ball(support_ids, query_pos_ids + query_neg_ids)
 
             # Step after each task
 

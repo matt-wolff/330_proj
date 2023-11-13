@@ -4,7 +4,7 @@ from torch_geometric.nn.models import GAT
 from torch_geometric.data import Data
 from formContactGraph import buildContactGraph
 from embeddings import Embeddings1D, Embeddings2D
-import csv
+import json
 
 def parseNode(cn, cl, dx):
     cl_index = cn.index(dx[0])
@@ -49,8 +49,11 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
         return self.gat(x, CMs)
 
 class ProteinEmbedder(nn.Module):
-    def __init__(self):
+    def __init__(self, jsonSeqDataFile):
         super().__init__()
+
+        with open(jsonSeqDataFile, 'r') as f:
+            self.proteinSeqs = json.load(f)
 
         
         self.gat = GatFCM()
@@ -82,13 +85,15 @@ class ProteinEmbedder(nn.Module):
 
 
 
-    def forward(self, uniprot_ids, residues):
+    def forward(self, protFileCodes):
+        # Embed Part
+        seqs = [self.proteinSeqs[protFileCode] for protFileCode in protFileCodes]
         with torch.no_grad():
-            embed2D = Embeddings2D(residues)
-            embed1D = Embeddings1D(residues)
+            embed2D = Embeddings2D(seqs)
+            embed1D = Embeddings1D(seqs)
 
         # GAT part
-        gatOut = self.gat(embed2D, uniprot_ids, [[len(seq)] for seq in residues])
+        gatOut = self.gat(embed2D, protFileCodes, [[len(seq)] for seq in seqs])
         gatReadable = self.preReadout(gatOut)
         gatRead = torch.mean(gatReadable, dim=1)
 
@@ -108,11 +113,11 @@ class ProteinEmbedder(nn.Module):
         return projected
 
 class prototypeClassifier (nn.Module):
-    def __init__ (self, batchSize, csvSeqFile):
+    def __init__ (self, batchSize, jsonSeqFile):
         super().__init__()
         self.batchSize = batchSize
         #self.k = k
-        self.model = ProteinEmbedder(csvSeqFile)
+        self.model = ProteinEmbedder(jsonSeqFile)
 
     def forward (self, posUniProtIDs, negUniProtIDs, queryUniProtIDs):
         posEmbeds = []
@@ -145,10 +150,10 @@ class prototypeClassifier (nn.Module):
         return queryDists.T # [numExamples, 2]
 
 class ballClassifier (nn.Module) :
-    def __init__ (self, batchSize, csvSeqFile):
+    def __init__ (self, batchSize, jsonSeqFile):
         super().__init__()
         self.radius = nn.Parameter(torch.ones(1))
-        self.model = ProteinEmbedder(csvSeqFile)
+        self.model = ProteinEmbedder(jsonSeqFile)
 
     def forward (self, posUniProtIDs, queryUniProtIDs):
         posEmbeds = []
@@ -195,6 +200,6 @@ class ballClassifier (nn.Module) :
 if "__main__" == __name__:
     import pdb
     pdb.set_trace()
-    dummy = ProteinEmbedder("data/residues.csv")
+    dummy = ProteinEmbedder("data/residues.json")
     res = dummy(["Q04656","P78413"])
     print(res.shape)
