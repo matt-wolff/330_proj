@@ -7,7 +7,7 @@ import random
 import torch.nn.functional as F
 from torch.utils import tensorboard
 
-VAL_INTERVAL = 20
+VAL_INTERVAL = 50
 
 log_dir = f'./logs/milestone_run_1'
 print(f'log_dir: {log_dir}')
@@ -45,65 +45,41 @@ for lr in learning_rates:
             probs = ball(support_ids, query_pos_ids + query_neg_ids)
             # targets = torch.Tensor([[0,1],[0,1],[0,1],[1,0],[1,0],[1,0]])
             targets = torch.Tensor([1,1,1,0,0,0])
-            loss = F.cross_entropy(torch.log(probs), labels)
+            loss = F.cross_entropy(torch.log(probs), targets)
             
             loss.backward()
             optimizer.step()
 
             writer.add_scalar('loss/train', loss.item(), i_step)
-            accuracy_query = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
+            accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
             writer.add_scalar(
-                'train_accuracy/query',
-                accuracy_query.item(),
+                'train_accuracy/',
+                accuracy.item(),
                 i_step
             )
 
-            # if i_step % self.val_interval == 0:
-            #     print("Start Validation...")
-            #     with torch.no_grad():
-            #         losses, accuracies = [], [], []
-            #         for i, val_task_batch in enumerate(dataloader_meta_val):
-            #             if self.bio and i > 600:
-            #                 break
-            #             loss, accuracy_support, accuracy_query = (
-            #                 self._step(val_task_batch)
-            #             )
-            #             losses.append(loss.item())
-            #             accuracies_support.append(accuracy_support)
-            #             accuracies_query.append(accuracy_query)
-            #         loss = np.mean(losses)
-            #         accuracy_support = np.mean(accuracies_support)
-            #         accuracy_query = np.mean(accuracies_query)
-            #         ci95 = 1.96 * np.std(accuracies_query) / np.sqrt(600 * 4)
-            #     if self.bio:
-            #         print(
-            #             f'Validation: '
-            #             f'loss: {loss:.3f}, '
-            #             f'support accuracy: {accuracy_support:.3f}, '
-            #             f'query accuracy: {accuracy_query:.3f}',
-            #             f'Ci95: {ci95:.3f}'
-            #         )
-            #     else: 
-            #         print(
-            #             f'Validation: '
-            #             f'loss: {loss:.3f}, '
-            #             f'support accuracy: {accuracy_support:.3f}, '
-            #             f'query accuracy: {accuracy_query:.3f}'
-            #         )
-            #     writer.add_scalar('loss/val', loss, i_step)
-            #     writer.add_scalar(
-            #         'val_accuracy/support',
-            #         accuracy_support,
-            #         i_step
-            #     )
-            #     writer.add_scalar(
-            #         'val_accuracy/query',
-            #         accuracy_query,
-            #         i_step
-            #     )
-            #     if self.bio:
-            #         writer.add_scalar(
-            #             'val_accuracy/ci95',
-            #             ci95,
-            #             i_step
-            #         )
+            if index % VAL_INTERVAL == 0:
+                print("Start Validation...")
+                with torch.no_grad():
+                    losses, accuracies = []
+                    for iter_val, row_val in val_df.iterrows():
+                        pos_ids_val, neg_ids_val = ast.literal_eval(row_val["Positive IDs"]), ast.literal_eval(row_val["Negative IDs"])
+                        rand_pos_ids_val = random.sample(pos_ids_val, k=8)
+                        support_ids_val = rand_pos_ids_val[:5]
+                        query_pos_ids_val = rand_pos_ids_val[5:]
+                        query_neg_ids_val = random.sample(neg_ids_val, k=3)
+                        probs = ball(support_ids_val, query_pos_ids_val + query_neg_ids_val)
+                        targets = torch.Tensor([1,1,1,0,0,0])
+                        loss = F.cross_entropy(torch.log(probs), targets)
+                        accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
+                        losses.append(loss)
+                        accuracies.append(accuracy)
+                    loss_val = np.mean(losses)
+                    accuracies_val = np.mean(accuracies)
+
+                    writer.add_scalar('loss/val', loss_val, i_step)
+                    writer.add_scalar(
+                        'val_accuracy',
+                        accuracy_val,
+                        i_step
+                    )
