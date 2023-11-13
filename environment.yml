@@ -2,7 +2,6 @@ name: CS330_Project
 channels:
   - defaults
   - conda-forge
-  - pyg
   - pytorch
 dependencies:
   - python=3.9
@@ -27,10 +26,10 @@ dependencies:
   - matplotlib=3.7.1
   - pip=23.1.2
   - biopython=1.78
-  - pyg
   - git
   - pip:
     - timeout_decorator
+    - torch_geometric
     - "--find-links https://download.pytorch.org/whl/torch_stable.html"
     - torch==2.0.1; sys_platform != "linux" and sys_platform != "win32"
     - torch==2.0.1+cpu; sys_platform == "linux" or sys_platform == "win32"
