@@ -16,7 +16,6 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
 
         super().__init__()
 
-
         self.gat = GAT(
             in_channels = 1028,
             hidden_channels = 512,
@@ -29,24 +28,27 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
         )
 
     def forward(self, x, protFileCodes, chainLengths):
+        #import pdb
+        #pdb.set_trace()
         chainIDs = ["A"] # Fix for multichain TODO
         #print(x.shape)
         #print(self.cm.edge_index.shape)
         #print(self.cm.shape)
         CMs = list()
-        for protFileCode in protFileCodes:
+        for i, protFileCode in enumerate(protFileCodes):
             cg = buildContactGraph(protFileCode)
             edgeList = []
             for con in cg:
-                edgeList.append(torch.tensor([parseNode(chainIDs, chainLength, con[0]), parseNode(chainIDs, chainLength, con[1])]))
+                edgeList.append(torch.tensor([parseNode(chainIDs, chainLengths[i], con[0]), parseNode(chainIDs, chainLengths[i], con[1])]))
             
             CM = torch.stack(edgeList, dim=1) # 
             CMs.append(CM)
-        CMs = torch.stack(CMs, dim=0)
+        #CMs = torch.stack(CMs, dim=0)
         #self.cm = Data(CM.contiguous()).edge_index
         #self.cm = CM
 
-        return self.gat(x, CMs)
+        #pdb.set_trace()
+        return torch.cat([self.gat(x[i], CM) for i,CM in enumerate(CMs)], dim=0)
 
 class ProteinEmbedder(nn.Module):
     def __init__(self, csvSeqDataFile):
@@ -61,54 +63,59 @@ class ProteinEmbedder(nn.Module):
         self.gat = GatFCM()
         self.preReadout = nn.Linear(256, 256) 
 
-        self.preTransform = nn.Linear(1024, 512)
-        self.seqTransform = nn.TransformerEncoder(nn.TransformerEncoderLayer(
-                512, 8, 512, dropout=0.0, batch_first = True
-            ), num_layers = 6, norm = nn.LayerNorm(512))
-        self.preCombination = nn.Linear(512, 256)
+        self.preTransform = nn.Linear(1028, 256)#,512)
+        #self.seqTransform = nn.TransformerEncoder(nn.TransformerEncoderLayer(
+        #        512, 8, 512, dropout=0.0, batch_first = True
+        #    ), num_layers = 6, norm = nn.LayerNorm(512))
+        #self.preCombination = nn.Linear(512, 256)
 
-        self.postMean = nn.Linear(1024, 256)
+        self.postMean = nn.Linear(1028, 256)
 
         self.postCombination = nn.Sequential(
-            nn.Linear(768, 768),
+            nn.Linear(512, 512),
             nn.LeakyReLU(),
-            nn.LayerNorm(768),
-            nn.Linear(768, 768),
+            nn.LayerNorm(512),
+            nn.Linear(512, 512),
             nn.LeakyReLU(),
-            nn.LayerNorm(768),
-            nn.Linear(768, 768),
+            nn.LayerNorm(512),
+            nn.Linear(512, 512),
             nn.LeakyReLU(),
-            nn.LayerNorm(768),
-            nn.Linear(768, 768),
+            nn.LayerNorm(512),
+            nn.Linear(512, 512),
             nn.LeakyReLU(),
-            nn.LayerNorm(768),
+            nn.LayerNorm(512),
         )
-        self.projection = nn.Linear(768, 32) # Assumes projection space is 32d
+        self.projection = nn.Linear(512, 32) # Assumes projection space is 32d
 
 
 
     def forward(self, protFileCodes): 
         # Embed Part
         seqs = [self.proteinSeqs[protFileCode] for protFileCode in protFileCodes]
+        seqlens = [len(seq) for seq in seqs]
         with torch.no_grad():
             embed2D = Embeddings2D(seqs)
-            embed1D = Embeddings1D(seqs)
+            embed1D = torch.stack(Embeddings1D(seqs), dim=0)
 
         # GAT part
         gatOut = self.gat(embed2D, protFileCodes, [[len(seq)] for seq in seqs])
         gatReadable = self.preReadout(gatOut)
-        gatRead = torch.mean(gatReadable, dim=1)
+        gatReads = []
+        for i in range(len(seqs)):
+            gatReads.append(torch.mean(gatReadable[sum(seqlens[:i]) : sum(seqlens[:i+1])], dim=0) )
+        gatRead = torch.stack(gatReads, dim=0)
 
         # Seq Transform Part
-        transformIn = self.preTransform(embed2D)
-        transformOut = self.seqTransform(transformIn)
-        transformRead = self.preCombinaiton(transformOut)
+        #transformIn = self.preTransform(embe2D)
+        #transformOut = self.seqTransform(transformIn)
+        #transformRead.append( torch.mean(self.preCombinaiton(transformOut), dim=0) )
+
 
         # Seq Mean Part
         meanOut = self.postMean(embed1D)
 
         # Combination and Projection Part
-        combined = torch.cat((meanOut, transformRead, gatRead), dim=1)
+        combined = torch.cat((meanOut, gatRead), dim=1)
         combinedOut = self.postCombination(combined)
         projected = self.projection(combinedOut)
 
@@ -139,7 +146,7 @@ class prototypeClassifier (nn.Module):
         queryEmbeds = []
         for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
             batchIDs = queryUniProtIDs[batch_start:batch_start+self.batchSize]
-            queryEmbeds.append(self.model(batchIDs))
+        queryEmbeds.append(self.model(batchIDs))
         queryEmbeddings = torch.cat(queryEmbeds, dim=0)
 
         queryDists = torch.stack((queryEmbeddings, queryEmbedding), dim=0)
