@@ -4,6 +4,7 @@ from model import ballClassifier
 import json
 import ast
 import random
+import torch.nn.functional as F
 
 TRAIN_PATH = 'data/go_tasks.csv'
 VAL_PATH = 'data/go_tasks.csv'
@@ -30,8 +31,8 @@ for lr in learning_rates:
             query_pos_ids = rand_pos_ids[5:]
             query_neg_ids = random.sample(neg_ids, k=3)
             probs = ball(support_ids, query_pos_ids + query_neg_ids)
-
-            # Step after each task
-
-
-
+            targets = torch.Tensor([[1,0],[1,0],[1,0],[0,1],[0,1],[0,1]])
+            loss = F.cross_entropy(torch.log(probs), labels)
+            
+            loss.backward()
+            optimizer.step()
