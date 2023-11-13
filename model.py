@@ -49,13 +49,13 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
         return self.gat(x, CMs)
 
 class mainModel(nn.Module):
-    def __init__(self):
+    def __init__(self, csvSeqDataFile):
+        super().__init__()
 
-        proteinSeqReader = csv.DictReader(csvFileName)
+        proteinSeqReader = csv.DictReader(open(csvSeqDataFile))
         proteinSeqs = dict()
-        proteinSeqReader = proteinSeqReader[1:]
         for row in proteinSeqReader:
-            proteinSeqs[row[0]] = row[1]
+            proteinSeqs[row["UniProtKB Object ID"]] = row["Residues"]
         self.proteinSeqs = proteinSeqs
         
         self.gat = GatFCM()
@@ -64,8 +64,8 @@ class mainModel(nn.Module):
         self.preTransform = nn.Linear(1024, 512)
         self.seqTransform = nn.TransformerEncoder(nn.TransformerEncoderLayer(
                 512, 8, 512, dropout=0.0, batch_first = True
-            ), num_layer = 6, norm = nn.LayerNorm(512))
-        self.preCombination = nn.linear(512, 256)
+            ), num_layers = 6, norm = nn.LayerNorm(512))
+        self.preCombination = nn.Linear(512, 256)
 
         self.postMean = nn.Linear(1024, 256)
 
@@ -90,8 +90,9 @@ class mainModel(nn.Module):
     def forward(self, protFileCodes): 
         # Embed Part
         seqs = [self.proteinSeqs[protFileCode] for protFileCode in protFileCodes]
-        embed2D = Embeddings2D(seqs)
-        embed1D = Embeddings1D(seqs)
+        with torch.no_grad():
+            embed2D = Embeddings2D(seqs)
+            embed1D = Embeddings1D(seqs)
 
         # GAT part
         gatOut = self.gat(embed2D, protFileCodes, [[len(seq)] for seq in seqs])
@@ -114,11 +115,11 @@ class mainModel(nn.Module):
         return projected
 
 class knnClassifier (nn.Module):
-    def __init__ (self, batchSize):
+    def __init__ (self, batchSize, csvSeqFile):
         super().__init__()
         self.batchSize = batchSize
         #self.k = k
-        self.model = mainModel()
+        self.model = mainModel(csvSeqFile)
 
     def forward (self, posUniProtIDs, negUniProtIDs, queryUniProtIDs):
         posEmbeds = []
@@ -168,8 +169,8 @@ class knnClassifier (nn.Module):
 #print(CM.contiguous())
 
 if "__main__" == __name__:
-    dummy = mainModel()
     import pdb
     pdb.set_trace()
-    res = dummy(["A1L157","Q3KNS6"])
+    dummy = mainModel("data/residues.csv")
+    res = dummy(["Q04656","P78413"])
     print(res.shape)
