@@ -3,10 +3,12 @@ from torch.utils.data import Dataset
 
 class ProteinDataset(Dataset):
     def __init__(self, df):
-        self.input_ids = df['input_ids']
+        self.unitprotids = df['UnitProtKB Object ID']
+        self.residues = df['Residues']
+        self.gofunctions = df['GO Functions']
 
     def __len__(self):
-        return len(self.input_ids)
+        return len(self.unitprotids)
 
     def __getitem__(self, idx):
-        return (self.input_ids[idx],)
+        return (self.unitprotids[idx],self.residues[idx],self.gofunctions[idx])
