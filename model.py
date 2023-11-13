@@ -132,14 +132,14 @@ class prototypeClassifier (nn.Module):
             batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
             posEmbeds.append(self.model(batchIDs))
         posEmbeddings = torch.cat(posEmbeds, dim=0)
-        posPrototype = torch.mean(posEmbeddings, dim=1)
+        posPrototype = torch.mean(posEmbeddings, dim=0)
 
         negEmbeds = []
         for batch_start in range(0, len(negUniProtIDs), self.batchSize):
             batchIDs = negUniProtIDs[batch_start:batch_start+self.batchSize]
             negEmbeds.append(self.model(batchIDs))
         negEmbeddings = torch.cat(negEmbeds, dim=0)
-        negPrototype = torch.mean(negEmbeddings, dim=1)
+        negPrototype = torch.mean(negEmbeddings, dim=0)
 
         queryEmbeds = []
         for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
@@ -159,6 +159,7 @@ class prototypeClassifier (nn.Module):
 class ballClassifier (nn.Module) :
     def __init__ (self, batchSize, jsonSeqFile):
         super().__init__()
+        self.batchSize = batchSize
         self.radius = nn.Parameter(torch.ones(1))
         self.model = ProteinEmbedder(jsonSeqFile)
 
@@ -168,7 +169,7 @@ class ballClassifier (nn.Module) :
             batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
             posEmbeds.append(self.model(batchIDs))
         posEmbeddings = torch.cat(posEmbeds, dim=0)
-        posPrototype = torch.mean(posEmbeddings, dim=1)
+        posPrototype = torch.mean(posEmbeddings, dim=0)
 
         queryEmbeds = []
         for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
@@ -184,7 +185,7 @@ class ballClassifier (nn.Module) :
         coeff = torch.log(torch.tensor([2])) / self.radius
         probInside = torch.exp(-queryDists * coeff)
         probOutside = torch.ones(probInside.shape) - probInside
-        probs = torch.stack((probInside, probOutside), dim[1])
+        probs = torch.stack((probInside, probOutside), dim=1)
         
         return probs # [numExamples, 2]
 
@@ -207,6 +208,7 @@ class ballClassifier (nn.Module) :
 if "__main__" == __name__:
     import pdb
     pdb.set_trace()
-    dummy = ProteinEmbedder("data/residues.json")
-    res = dummy(["Q04656","P78413"])
-    print(res.shape)
+    #dummy = ProteinEmbedder("data/residues.json")
+    dummy = ballClassifier(2,"data/residues.json")
+    res = dummy(["Q04656","P78413","Q9BT81"], ["Q9UIL4","P78413"])
+    print(res)
