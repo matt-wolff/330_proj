@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torch.utils import tensorboard
 import torch_geometric as pyg
 import torch
+from embeddings import ESMEmbedder
 
 VAL_INTERVAL = 50
 
@@ -48,6 +49,9 @@ for lr in learning_rates:
             module.reset_parameters()
 
     ball.apply(initializeParams)
+
+    emb = ESMEmbedder()
+    ball.model.emb = emb
 
     optimizer = optim.AdamW(ball.parameters(), lr=lr)
     train_losses, val_losses = [], []
