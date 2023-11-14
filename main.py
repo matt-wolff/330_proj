@@ -14,6 +14,7 @@ from torch.utils import tensorboard
 import torch_geometric as pyg
 import torch
 from embeddings import ESMEmbedder
+from tqdm import tqdm
 
 VAL_INTERVAL = 50
 DEVICE = 'cuda'
@@ -41,6 +42,8 @@ def main(args):
     df = pd.read_csv(PATH, encoding='utf-8')
     num_tasks, _ = df.shape # Note: _ = 3.
     # I chose a random split, we can modify this
+
+    df = df.sample(frac=1).reset_index(drop=True)
     train_df = df[:int(0.7*num_tasks)]
     val_df = df[int(0.7*num_tasks):int(0.8*num_tasks)]
     test_df = df[int(0.8*num_tasks):]
@@ -73,7 +76,7 @@ def main(args):
     train_losses, val_losses = [], []
     for epoch in range(num_epochs):
         train_loss = 0
-        for index, row in train_df.iterrows():  # Iterating over each task
+        for index, row in tqdm(train_df.iterrows(), desc=f'Training epoch: {epoch}'):  # Iterating over each task
             optimizer.zero_grad()
 
             pos_ids, neg_ids = ast.literal_eval(row["Positive IDs"]), ast.literal_eval(row["Negative IDs"])
@@ -107,8 +110,8 @@ def main(args):
                         support_ids_val = rand_pos_ids_val[:5]
                         query_pos_ids_val = rand_pos_ids_val[5:]
                         query_neg_ids_val = random.sample(neg_ids_val, k=3)
-                        probs = ball(support_ids_val, query_pos_ids_val + query_neg_ids_val)
-                        targets = torch.Tensor([1,1,1,0,0,0])
+                        probs = ball(support_ids_val, query_pos_ids_val + query_neg_ids_val).to(DEVICE)
+                        targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE)
                         loss = F.cross_entropy(torch.log(probs), targets)
                         accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
                         losses.append(loss)
