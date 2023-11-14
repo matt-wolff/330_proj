@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch_geometric.nn.models import GAT
 from torch_geometric.data import Data
 from formContactGraph import buildContactGraph
-from embeddings import Embeddings1D, Embeddings2D
+#from embeddings import Embeddings1D, Embeddings2D
 import json
 
 def parseNode(cn, cl, dx):
@@ -92,8 +92,8 @@ class ProteinEmbedder(nn.Module):
         seqs = [self.proteinSeqs[protFileCode] for protFileCode in protFileCodes]
         seqlens = [len(seq) for seq in seqs]
         with torch.no_grad():
-            embed2D = Embeddings2D(seqs)
-            embed1D = torch.stack(Embeddings1D(seqs), dim=0)
+            embed2D = self.emb.Embeddings2D(seqs)
+            embed1D = torch.stack(self.emb.Embeddings1D(seqs), dim=0)
 
         # GAT part
         gatOut = self.gat(embed2D, protFileCodes, [[len(seq)] for seq in seqs])

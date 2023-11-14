@@ -11,6 +11,9 @@ import ast
 import random
 import torch.nn.functional as F
 from torch.utils import tensorboard
+import torch_geometric as pyg
+import torch
+from embeddings import ESMEmbedder
 
 VAL_INTERVAL = 50
 DEVICE = 'cuda'
@@ -46,6 +49,26 @@ def main(args):
     lr = args.learning_rate
 
     ball = ballClassifier(batchSize=8, jsonSeqFile='data/residues.json')
+
+    import pdb
+    pdb.set_trace()
+    def initializeParams(module): ## TODO when you add in the pretrained model; ensure you do not initialize that
+        if isinstance(module, torch.nn.Linear):
+            module.weight.data = torch.nn.init.xavier_normal_(module.weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            if module.bias is not None:
+                module.bias.data.zero_()
+
+        if isinstance(module, torch.nn.LayerNorm) or isinstance(module, torch.nn.BatchNorm1d) or isinstance(module, torch.nn.BatchNorm2d):
+            module.weight.data.fill_(1.0)
+            module.bias.data.zero_()
+        if isinstance(module, pyg.nn.models.GAT):
+            module.reset_parameters()
+
+    ball.apply(initializeParams)
+
+    emb = ESMEmbedder()
+    ball.model.emb = emb
+
     optimizer = optim.AdamW(ball.parameters(), lr=lr)
     train_losses, val_losses = [], []
     for epoch in range(num_epochs):
