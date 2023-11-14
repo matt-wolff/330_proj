@@ -1,3 +1,8 @@
+import argparse
+import os
+import sys
+sys.path.append('..')
+
 import pandas as pd
 import torch.optim as optim
 from model import ballClassifier
@@ -8,27 +13,38 @@ import torch.nn.functional as F
 from torch.utils import tensorboard
 
 VAL_INTERVAL = 50
-
-log_dir = f'./logs/milestone_run_1'
-print(f'log_dir: {log_dir}')
-writer = tensorboard.SummaryWriter(log_dir=log_dir)
-
+DEVICE = 'cuda'
 # TRAIN_PATH = 'data/go_tasks.csv'
 # VAL_PATH = 'data/go_tasks.csv'
 PATH = 'data/go_tasks.csv'
-with open('data/residues.json', 'r') as f:
-  ID_TO_RESIDUES = json.load(f)
+# learning_rates = [1e-6, 5e-6, 1e-5]
 
-df = pd.read_csv(PATH, encoding='utf-8')
-num_tasks, _ = df.shape # Note: _ = 3.
-# I chose a random split, we can modify this
-train_df = df[:int(0.7*num_tasks)]
-val_df = df[int(0.7*num_tasks):int(0.8*num_tasks)]
-test_df = df[int(0.8*num_tasks):]
-learning_rates = [1e-6, 5e-6, 1e-5]
-num_epochs = 5 # Should we modify the number of epochs?
+def main(args):
 
-for lr in learning_rates:
+    if args.device == "gpu" and torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        DEVICE = "mps"
+    elif args.device == "gpu" and torch.cuda.is_available():
+        DEVICE = "cuda"
+    else:
+        DEVICE = "cpu"
+
+    log_dir = f'./logs/milestone_run_1'
+    print(f'log_dir: {log_dir}')
+    writer = tensorboard.SummaryWriter(log_dir=log_dir)
+
+    with open('data/residues.json', 'r') as f:
+        ID_TO_RESIDUES = json.load(f)
+
+    df = pd.read_csv(PATH, encoding='utf-8')
+    num_tasks, _ = df.shape # Note: _ = 3.
+    # I chose a random split, we can modify this
+    train_df = df[:int(0.7*num_tasks)]
+    val_df = df[int(0.7*num_tasks):int(0.8*num_tasks)]
+    test_df = df[int(0.8*num_tasks):]
+    num_epochs = 5 # Should we modify the number of epochs?
+
+    lr = args.learning_rate
+
     ball = ballClassifier(batchSize=8, jsonSeqFile='data/residues.json')
     optimizer = optim.AdamW(ball.parameters(), lr=lr)
     train_losses, val_losses = [], []
@@ -44,7 +60,7 @@ for lr in learning_rates:
             query_neg_ids = random.sample(neg_ids, k=3)
             probs = ball(support_ids, query_pos_ids + query_neg_ids)
             # targets = torch.Tensor([[0,1],[0,1],[0,1],[1,0],[1,0],[1,0]])
-            targets = torch.Tensor([1,1,1,0,0,0])
+            targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE)
             loss = F.cross_entropy(torch.log(probs), targets)
             
             loss.backward()
@@ -83,3 +99,15 @@ for lr in learning_rates:
                         accuracy_val,
                         i_step
                     )
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser('Train a Ball Classifier!')
+    parser.add_argument('--learning_rate', type=float, default=5e-6,
+                        help='learning rate for the network')
+    parser.add_argument('--device', type=str, default='cpu')
+    
+    # parser.add_argument('--datadir', default='xxx', type=str, help='directory for datasets.')
+
+    args = parser.parse_args()
+
+    main(args)
