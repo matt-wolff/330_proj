@@ -81,7 +81,7 @@ def main(args):
             support_ids = rand_pos_ids[:5]
             query_pos_ids = rand_pos_ids[5:]
             query_neg_ids = random.sample(neg_ids, k=3)
-            probs = ball(support_ids, query_pos_ids + query_neg_ids)
+            probs = ball(support_ids, query_pos_ids + query_neg_ids).to(DEVICE)
             # targets = torch.Tensor([[0,1],[0,1],[0,1],[1,0],[1,0],[1,0]])
             targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE)
             loss = F.cross_entropy(torch.log(probs), targets)
