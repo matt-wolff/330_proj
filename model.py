@@ -17,7 +17,7 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
         super().__init__()
 
         self.gat = GAT(
-            in_channels = 1028,
+            in_channels = 480,
             hidden_channels = 512,
             num_layers = 1,
             out_channels = 256,
@@ -28,8 +28,6 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
         )
 
     def forward(self, x, protFileCodes, chainLengths):
-        #import pdb
-        #pdb.set_trace()
         chainIDs = ["A"] # Fix for multichain TODO
         #print(x.shape)
         #print(self.cm.edge_index.shape)
@@ -39,7 +37,7 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
             cg = buildContactGraph(protFileCode)
             edgeList = []
             for con in cg:
-                edgeList.append(torch.tensor([parseNode(chainIDs, chainLengths[i], con[0]), parseNode(chainIDs, chainLengths[i], con[1])]))
+                edgeList.append(torch.tensor([parseNode(chainIDs, chainLengths[i], con[0]), parseNode(chainIDs, chainLengths[i], con[1])]).to(x[0].device))
             
             CM = torch.stack(edgeList, dim=1) # 
             CMs.append(CM)
@@ -47,7 +45,6 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
         #self.cm = Data(CM.contiguous()).edge_index
         #self.cm = CM
 
-        #pdb.set_trace()
         return torch.cat([self.gat(x[i], CM) for i,CM in enumerate(CMs)], dim=0)
 
 class ProteinEmbedder(nn.Module):
@@ -61,13 +58,13 @@ class ProteinEmbedder(nn.Module):
         self.gat = GatFCM()
         self.preReadout = nn.Linear(256, 256) 
 
-        self.preTransform = nn.Linear(1028, 256)#,512)
+        #self.preTransform = nn.Linear(640, 256)#,512)
         #self.seqTransform = nn.TransformerEncoder(nn.TransformerEncoderLayer(
         #        512, 8, 512, dropout=0.0, batch_first = True
         #    ), num_layers = 6, norm = nn.LayerNorm(512))
         #self.preCombination = nn.Linear(512, 256)
 
-        self.postMean = nn.Linear(1028, 256)
+        self.postMean = nn.Linear(480, 256)
 
         self.postCombination = nn.Sequential(
             nn.Linear(512, 512),
@@ -182,9 +179,9 @@ class ballClassifier (nn.Module) :
         queryDists = torch.sum(queryDists, dim=1)
         queryDists = torch.sqrt(queryDists) # [numExamples]
 
-        coeff = torch.log(torch.tensor([2])) / self.radius
+        coeff = torch.log(torch.tensor([2]).to(posPrototype.device)) / self.radius
         probInside = torch.exp(-queryDists * coeff)
-        probOutside = torch.ones(probInside.shape) - probInside
+        probOutside = torch.ones(probInside.shape).to(posPrototype.device) - probInside
         probs = torch.stack((probInside, probOutside), dim=1)
         
         return probs # [numExamples, 2]
@@ -206,8 +203,6 @@ class ballClassifier (nn.Module) :
 #print(CM.contiguous())
 
 if "__main__" == __name__:
-    import pdb
-    pdb.set_trace()
     #dummy = ProteinEmbedder("data/residues.json")
     dummy = ballClassifier(2,"data/residues.json")
     res = dummy(["Q04656","P78413","Q9BT81"], ["Q9UIL4","P78413"])

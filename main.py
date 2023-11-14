@@ -25,9 +25,7 @@ PATH = 'data/go_tasks.csv'
 
 def main(args):
 
-    if args.device == "gpu" and torch.backends.mps.is_available() and torch.backends.mps.is_built():
-        DEVICE = "mps"
-    elif args.device == "gpu" and torch.cuda.is_available():
+    if args.device == "cuda" and torch.cuda.is_available():
         DEVICE = "cuda"
     else:
         DEVICE = "cpu"
@@ -42,7 +40,6 @@ def main(args):
     df = pd.read_csv(PATH, encoding='utf-8')
     num_tasks, _ = df.shape # Note: _ = 3.
     # I chose a random split, we can modify this
-
     df = df.sample(frac=1).reset_index(drop=True)
     train_df = df[:int(0.7*num_tasks)]
     val_df = df[int(0.7*num_tasks):int(0.8*num_tasks)]
@@ -51,10 +48,8 @@ def main(args):
 
     lr = args.learning_rate
 
-    ball = ballClassifier(batchSize=8, jsonSeqFile='data/residues.json')
+    ball = ballClassifier(batchSize=8, jsonSeqFile='data/residues.json').to(DEVICE)
 
-    import pdb
-    pdb.set_trace()
     def initializeParams(module): ## TODO when you add in the pretrained model; ensure you do not initialize that
         if isinstance(module, torch.nn.Linear):
             module.weight.data = torch.nn.init.xavier_normal_(module.weight.data, gain=torch.nn.init.calculate_gain('relu'))
@@ -68,8 +63,8 @@ def main(args):
             module.reset_parameters()
 
     ball.apply(initializeParams)
-
-    emb = ESMEmbedder()
+    
+    emb = ESMEmbedder(DEVICE).to(DEVICE)
     ball.model.emb = emb
 
     optimizer = optim.AdamW(ball.parameters(), lr=lr)
@@ -84,53 +79,57 @@ def main(args):
             support_ids = rand_pos_ids[:5]
             query_pos_ids = rand_pos_ids[5:]
             query_neg_ids = random.sample(neg_ids, k=3)
-            probs = ball(support_ids, query_pos_ids + query_neg_ids).to(DEVICE)
+            probs = ball(support_ids, query_pos_ids + query_neg_ids)
             # targets = torch.Tensor([[0,1],[0,1],[0,1],[1,0],[1,0],[1,0]])
-            targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE)
+            targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE).to(torch.int64)
             loss = F.cross_entropy(torch.log(probs), targets)
             
             loss.backward()
             optimizer.step()
 
+            i_step = num_tasks*epoch + index
             writer.add_scalar('loss/train', loss.item(), i_step)
             accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
             writer.add_scalar(
                 'train_accuracy/',
-                accuracy.item(),
+                accuracy,
                 i_step
             )
 
-            if index % VAL_INTERVAL == 0:
-                print("Start Validation...")
-                with torch.no_grad():
-                    losses, accuracies = []
-                    for iter_val, row_val in val_df.iterrows():
-                        pos_ids_val, neg_ids_val = ast.literal_eval(row_val["Positive IDs"]), ast.literal_eval(row_val["Negative IDs"])
-                        rand_pos_ids_val = random.sample(pos_ids_val, k=8)
-                        support_ids_val = rand_pos_ids_val[:5]
-                        query_pos_ids_val = rand_pos_ids_val[5:]
-                        query_neg_ids_val = random.sample(neg_ids_val, k=3)
-                        probs = ball(support_ids_val, query_pos_ids_val + query_neg_ids_val).to(DEVICE)
-                        targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE)
-                        loss = F.cross_entropy(torch.log(probs), targets)
-                        accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
-                        losses.append(loss)
-                        accuracies.append(accuracy)
-                    loss_val = np.mean(losses)
-                    accuracies_val = np.mean(accuracies)
+    torch.save(ball.state_dict(), 'ball.pt')
 
-                    writer.add_scalar('loss/val', loss_val, i_step)
-                    writer.add_scalar(
-                        'val_accuracy',
-                        accuracy_val,
-                        i_step
-                    )
+            # if index % VAL_INTERVAL == 0:
+            #     print("Start Validation...")
+            #     with torch.no_grad():
+            #         losses, accuracies = [], []
+            #         for iter_val, row_val in tqdm(val_df.iterrows(), desc=f"Val Training Epoch {epoch}"):
+            #             print(torch.cuda.memory_summary())
+            #             pos_ids_val, neg_ids_val = ast.literal_eval(row_val["Positive IDs"]), ast.literal_eval(row_val["Negative IDs"])
+            #             rand_pos_ids_val = random.sample(pos_ids_val, k=8)
+            #             support_ids_val = rand_pos_ids_val[:5]
+            #             query_pos_ids_val = rand_pos_ids_val[5:]
+            #             query_neg_ids_val = random.sample(neg_ids_val, k=3)
+            #             probs = ball(support_ids_val, query_pos_ids_val + query_neg_ids_val)
+            #             targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE).to(torch.int64)
+            #             loss = F.cross_entropy(torch.log(probs), targets)
+            #             accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
+            #             losses.append(loss)
+            #             accuracies.append(accuracy)
+            #         loss_val = np.mean(losses)
+            #         accuracies_val = np.mean(accuracies)
+
+            #         writer.add_scalar('loss/val', loss_val, i_step)
+            #         writer.add_scalar(
+            #             'val_accuracy',
+            #             accuracy_val,
+            #             i_step
+            #         )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Train a Ball Classifier!')
-    parser.add_argument('--learning_rate', type=float, default=5e-6,
+    parser.add_argument('--learning_rate', type=float, default=5e-4,
                         help='learning rate for the network')
-    parser.add_argument('--device', type=str, default='cpu')
+    parser.add_argument('--device', type=str, default='cuda')
     
     # parser.add_argument('--datadir', default='xxx', type=str, help='directory for datasets.')
 

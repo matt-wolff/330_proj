@@ -1,6 +1,10 @@
 from Bio.UniProt.GOA import gafiterator
 import pandas as pd
+import json
 DATA_PATH = 'data'
+
+with open(f'{DATA_PATH}/residues.json', 'r') as f:
+    ID_TO_RESIDUES = json.load(f)
 
 data = {
     "GO Functions": [],
@@ -12,7 +16,7 @@ functions_to_id = {}
 all_proteins = set()
 with open(f'{DATA_PATH}/goa_human.gaf', 'r') as handle:
     for rec in gafiterator(handle):
-        if rec['Aspect'] == 'F' and rec['DB'] == 'UniProtKB' and 'NOT' not in rec["Qualifier"]:
+        if rec['Aspect'] == 'F' and rec['DB'] == 'UniProtKB' and 'NOT' not in rec["Qualifier"] and rec['DB_Object_ID'] in ID_TO_RESIDUES.keys():
             if rec['GO_ID'] in functions_to_id.keys():
                 functions_to_id[rec['GO_ID']].add(rec['DB_Object_ID'])
             else:

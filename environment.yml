@@ -3,6 +3,7 @@ channels:
   - defaults
   - conda-forge
   - pytorch
+  - nvidia
 dependencies:
   - python=3.9
   - cloudpickle=2.2.1
@@ -30,9 +31,10 @@ dependencies:
   - pip:
     - timeout_decorator
     - torch_geometric
+    - torch==2.0.1+cu118
+    - torchvision
+    - torchaudio
     - "--find-links https://download.pytorch.org/whl/torch_stable.html"
-    - torch==2.0.1; sys_platform != "linux" and sys_platform != "win32"
-    - torch==2.0.1+cpu; sys_platform == "linux" or sys_platform == "win32"
     - rouge-score==0.1.2
     # Manage the below packages over pip to avoid segmentation fault in transformers on Mac
     - huggingface-hub==0.16.4

@@ -13,7 +13,7 @@ def order(pair):
 
 
 def buildContactGraph(PDBcode):
-    cmap = pcmap.contactMap("data/AF-"+PDBcode+"-F1-model_v4.pdb", dist=8.0)
+    cmap = pcmap.contactMap("data/UP000005640_9606_HUMAN_v4/AF-"+PDBcode+"-F1-model_v4.pdb", dist=8.0)
     #pdb.set_trace()
     # TODO distance parameter
 
