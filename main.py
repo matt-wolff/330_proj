@@ -74,16 +74,24 @@ def main(args):
         for index, row in tqdm(train_df.iterrows(), desc=f'Training epoch: {epoch}'):  # Iterating over each task
             optimizer.zero_grad()
 
-            pos_ids, neg_ids = ast.literal_eval(row["Positive IDs"]), ast.literal_eval(row["Negative IDs"])
+            pos_ids = ast.literal_eval(row["Positive IDs"])
             rand_pos_ids = random.sample(pos_ids, k=8)
             support_ids = rand_pos_ids[:5]
             query_pos_ids = rand_pos_ids[5:]
-            query_neg_ids = random.sample(neg_ids, k=3)
+
+            neg_ids = ast.literal_eval(row["Negative IDs"])
+            if len(neg_ids) < 3:
+                all_other = ast.literal_eval(row["All Other IDs"])
+                query_neg_ids = random.sample(neg_ids, k=len(neg_ids))
+                query_neg_ids += random.sample(all_other, k=3-len(neg_ids))
+            else:
+                query_neg_ids = random.sample(neg_ids, k=3)
+
             probs = ball(support_ids, query_pos_ids + query_neg_ids)
             # targets = torch.Tensor([[0,1],[0,1],[0,1],[1,0],[1,0],[1,0]])
             targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE).to(torch.int64)
             loss = F.cross_entropy(torch.log(probs), targets)
-            
+
             loss.backward()
             optimizer.step()
 
