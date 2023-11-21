@@ -30,7 +30,7 @@ def main(args):
     else:
         DEVICE = "cpu"
 
-    log_dir = f'./logs/milestone_run_1'
+    log_dir = f'./logs/{args.run_name}'
     print(f'log_dir: {log_dir}')
     writer = tensorboard.SummaryWriter(log_dir=log_dir)
 
@@ -42,6 +42,7 @@ def main(args):
     # I chose a random split, we can modify this
     df = df.sample(frac=1).reset_index(drop=True)
     train_df = df[:int(0.7*num_tasks)]
+    num_train_tasks, _ = train_df.shape
     val_df = df[int(0.7*num_tasks):int(0.8*num_tasks)]
     test_df = df[int(0.8*num_tasks):]
     num_epochs = 5 # Should we modify the number of epochs?
@@ -88,14 +89,13 @@ def main(args):
                 query_neg_ids = random.sample(neg_ids, k=3)
 
             probs = ball(support_ids, query_pos_ids + query_neg_ids)
-            # targets = torch.Tensor([[0,1],[0,1],[0,1],[1,0],[1,0],[1,0]])
             targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE).to(torch.int64)
             loss = F.cross_entropy(torch.log(probs), targets)
 
             loss.backward()
             optimizer.step()
 
-            i_step = num_tasks*epoch + index
+            i_step = num_train_tasks*epoch + index
             writer.add_scalar('loss/train', loss.item(), i_step)
             accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
             writer.add_scalar(
@@ -104,40 +104,41 @@ def main(args):
                 i_step
             )
 
-    torch.save(ball.state_dict(), 'ball.pt')
+            if index % VAL_INTERVAL == 0:
+                print("Start Validation...")
+                with torch.no_grad():
+                    losses, accuracies = [], []
+                    for iter_val, row_val in tqdm(val_df.iterrows(), desc=f"Val Training Epoch {epoch}"):
+                        pos_ids_val, neg_ids_val = ast.literal_eval(row_val["Positive IDs"]), ast.literal_eval(row_val["Negative IDs"])
+                        rand_pos_ids_val = random.sample(pos_ids_val, k=8)
+                        support_ids_val = rand_pos_ids_val[:5]
+                        query_pos_ids_val = rand_pos_ids_val[5:]
+                        query_neg_ids_val = random.sample(neg_ids_val, k=3)
+                        probs = ball(support_ids_val, query_pos_ids_val + query_neg_ids_val)
+                        targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE).to(torch.int64)
+                        loss = F.cross_entropy(torch.log(probs), targets)
+                        accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
+                        losses.append(loss)
+                        accuracies.append(accuracy)
+                    loss_val = torch.mean(losses)
+                    accuracies_val = torch.mean(accuracies)
 
-            # if index % VAL_INTERVAL == 0:
-            #     print("Start Validation...")
-            #     with torch.no_grad():
-            #         losses, accuracies = [], []
-            #         for iter_val, row_val in tqdm(val_df.iterrows(), desc=f"Val Training Epoch {epoch}"):
-            #             print(torch.cuda.memory_summary())
-            #             pos_ids_val, neg_ids_val = ast.literal_eval(row_val["Positive IDs"]), ast.literal_eval(row_val["Negative IDs"])
-            #             rand_pos_ids_val = random.sample(pos_ids_val, k=8)
-            #             support_ids_val = rand_pos_ids_val[:5]
-            #             query_pos_ids_val = rand_pos_ids_val[5:]
-            #             query_neg_ids_val = random.sample(neg_ids_val, k=3)
-            #             probs = ball(support_ids_val, query_pos_ids_val + query_neg_ids_val)
-            #             targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE).to(torch.int64)
-            #             loss = F.cross_entropy(torch.log(probs), targets)
-            #             accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
-            #             losses.append(loss)
-            #             accuracies.append(accuracy)
-            #         loss_val = np.mean(losses)
-            #         accuracies_val = np.mean(accuracies)
+                    writer.add_scalar('loss/val', loss_val, i_step)
+                    writer.add_scalar(
+                        'val_accuracy',
+                        accuracy_val,
+                        i_step
+                    )
 
-            #         writer.add_scalar('loss/val', loss_val, i_step)
-            #         writer.add_scalar(
-            #             'val_accuracy',
-            #             accuracy_val,
-            #             i_step
-            #         )
+                if (index + VAL_INTERVAL) % num_train_tasks > index % num_train_tasks:
+                    torch.save(ball.state_dict(), f'ball_run2_epoch{epoch}.pt')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Train a Ball Classifier!')
     parser.add_argument('--learning_rate', type=float, default=5e-4,
                         help='learning rate for the network')
     parser.add_argument('--device', type=str, default='cuda')
+    parser.add_argument('--run_name', type=str, default='temp')
     
     # parser.add_argument('--datadir', default='xxx', type=str, help='directory for datasets.')
 

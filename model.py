@@ -47,6 +47,141 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
 
         return torch.cat([self.gat(x[i], CM) for i,CM in enumerate(CMs)], dim=0)
 
+class PEwoGAT(nn.Module):
+    def __init__(self, jsonSeqDataFile):
+        super().__init__()
+
+        with open(jsonSeqDataFile, 'r') as f:
+            self.proteinSeqs = json.load(f)
+        
+        self.gat = GatFCM()
+        self.preReadout = nn.Linear(256, 512) # While this does create some unused vector space, it is the best to maintain model expressivity
+
+        self.postCombination = nn.Sequential(
+            nn.Linear(512, 512),
+            nn.LeakyReLU(),
+            nn.LayerNorm(512),
+            nn.Linear(512, 512),
+            nn.LeakyReLU(),
+            nn.LayerNorm(512),
+            nn.Linear(512, 512),
+            nn.LeakyReLU(),
+            nn.LayerNorm(512),
+            nn.Linear(512, 512),
+            nn.LeakyReLU(),
+            nn.LayerNorm(512),
+        )
+        self.projection = nn.Linear(512, 32) # Assumes projection space is 32d
+
+    def forward(self, protFileCodes):
+        # Embed Part
+        seqs = [self.proteinSeqs[protFileCode] for protFileCode in protFileCodes]
+        seqlens = [len(seq) for seq in seqs]
+        with torch.no_grad():
+            embed2D = self.emb.Embeddings2D(seqs)
+            embed1D = torch.stack(self.emb.Embeddings1D(seqs), dim=0)
+
+        # Seq Mean Part
+        meanOut = self.postMean(embed1D)
+
+        # Combination and Projection Part
+        combined = meanOut#torch.cat((meanOut, gatRead), dim=1)
+        combinedOut = self.postCombination(combined)
+        projected = self.projection(combinedOut)
+
+        return projected
+
+class PEwoDirectEmbedding(nn.Module):
+    def __init__(self, jsonSeqDataFile):
+        super().__init__()
+
+        with open(jsonSeqDataFile, 'r') as f:
+            self.proteinSeqs = json.load(f)
+
+        
+        self.gat = GatFCM()
+        self.preReadout = nn.Linear(256, 512)  # Creates some wasted vector space but it's OK
+
+        self.postCombination = nn.Sequential(
+            nn.Linear(512, 512),
+            nn.LeakyReLU(),
+            nn.LayerNorm(512),
+            nn.Linear(512, 512),
+            nn.LeakyReLU(),
+            nn.LayerNorm(512),
+            nn.Linear(512, 512),
+            nn.LeakyReLU(),
+            nn.LayerNorm(512),
+            nn.Linear(512, 512),
+            nn.LeakyReLU(),
+            nn.LayerNorm(512),
+        )
+        self.projection = nn.Linear(512, 32) # Assumes projection space is 32d
+
+
+
+    def forward(self, protFileCodes):
+        # Embed Part
+        seqs = [self.proteinSeqs[protFileCode] for protFileCode in protFileCodes]
+        seqlens = [len(seq) for seq in seqs]
+        with torch.no_grad():
+            embed2D = self.emb.Embeddings2D(seqs)
+            embed1D = torch.stack(self.emb.Embeddings1D(seqs), dim=0)
+
+        # GAT part
+        gatOut = self.gat(embed2D, protFileCodes, [[len(seq)] for seq in seqs])
+        gatReadable = self.preReadout(gatOut)
+        gatReads = []
+        for i in range(len(seqs)):
+            gatReads.append(torch.mean(gatReadable[sum(seqlens[:i]) : sum(seqlens[:i+1])], dim=0) )
+        gatRead = torch.stack(gatReads, dim=0)
+
+        # Combination and Projection Part
+        combined = gatRead #torch.cat((meanOut, gatRead), dim=1)
+        combinedOut = self.postCombination(combined)
+        projected = self.projection(combinedOut)
+
+        return projected
+
+class PEwoPostCombination(nn.Module):
+    def __init__(self, jsonSeqDataFile):
+        super().__init__()
+
+        with open(jsonSeqDataFile, 'r') as f:
+            self.proteinSeqs = json.load(f)
+
+        
+        self.gat = GatFCM()
+        self.preReadout = nn.Linear(256, 256) 
+        self.postMean = nn.Linear(480, 256)
+        self.projection = nn.Linear(512, 32) # Assumes projection space is 32d
+
+    def forward(self, protFileCodes):
+        # Embed Part
+        seqs = [self.proteinSeqs[protFileCode] for protFileCode in protFileCodes]
+        seqlens = [len(seq) for seq in seqs]
+        with torch.no_grad():
+            embed2D = self.emb.Embeddings2D(seqs)
+            embed1D = torch.stack(self.emb.Embeddings1D(seqs), dim=0)
+
+        # GAT part
+        gatOut = self.gat(embed2D, protFileCodes, [[len(seq)] for seq in seqs])
+        gatReadable = self.preReadout(gatOut)
+        gatReads = []
+        for i in range(len(seqs)):
+            gatReads.append(torch.mean(gatReadable[sum(seqlens[:i]) : sum(seqlens[:i+1])], dim=0) )
+        gatRead = torch.stack(gatReads, dim=0)
+
+        # Seq Mean Part
+        meanOut = self.postMean(embed1D)
+
+        # Combination and Projection Part
+        combined = torch.cat((meanOut, gatRead), dim=1)
+        combinedOut = combined #self.postCombination(combined)
+        projected = self.projection(combinedOut)
+
+        return projected
+
 class ProteinEmbedder(nn.Module):
     def __init__(self, jsonSeqDataFile):
         super().__init__()
@@ -57,13 +192,6 @@ class ProteinEmbedder(nn.Module):
         
         self.gat = GatFCM()
         self.preReadout = nn.Linear(256, 256) 
-
-        #self.preTransform = nn.Linear(640, 256)#,512)
-        #self.seqTransform = nn.TransformerEncoder(nn.TransformerEncoderLayer(
-        #        512, 8, 512, dropout=0.0, batch_first = True
-        #    ), num_layers = 6, norm = nn.LayerNorm(512))
-        #self.preCombination = nn.Linear(512, 256)
-
         self.postMean = nn.Linear(480, 256)
 
         self.postCombination = nn.Sequential(
@@ -152,6 +280,106 @@ class prototypeClassifier (nn.Module):
         # Now QueryDists is [2, numExamples], treat logits
         
         return queryDists.T # [numExamples, 2]
+
+class BCwoPostCombination (nn.Module) :
+    def __init__ (self, batchSize, jsonSeqFile):
+        super().__init__()
+        self.batchSize = batchSize
+        self.radius = nn.Parameter(torch.ones(1))
+        self.model = PEwoPostCombination(jsonSeqFile)
+
+    def forward (self, posUniProtIDs, queryUniProtIDs):
+        posEmbeds = []
+        for batch_start in range(0, len(posUniProtIDs), self.batchSize):
+            batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
+            posEmbeds.append(self.model(batchIDs))
+        posEmbeddings = torch.cat(posEmbeds, dim=0)
+        posPrototype = torch.mean(posEmbeddings, dim=0)
+
+        queryEmbeds = []
+        for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
+            batchIDs = queryUniProtIDs[batch_start:batch_start+self.batchSize]
+            queryEmbeds.append(self.model(batchIDs))
+        queryEmbeddings = torch.cat(queryEmbeds, dim=0)
+
+        queryDists = queryEmbeddings - posPrototype.reshape((1,-1))
+        queryDists = torch.pow(queryDists, 2)
+        queryDists = torch.sum(queryDists, dim=1)
+        queryDists = torch.sqrt(queryDists) # [numExamples]
+
+        coeff = torch.log(torch.tensor([2]).to(posPrototype.device)) / self.radius
+        probInside = torch.exp(-queryDists * coeff)
+        probOutside = torch.ones(probInside.shape).to(posPrototype.device) - probInside
+        probs = torch.stack((probInside, probOutside), dim=1)
+        
+        return probs # [numExamples, 2]
+
+class BCwoDirectEmbedding (nn.Module) :
+    def __init__ (self, batchSize, jsonSeqFile):
+        super().__init__()
+        self.batchSize = batchSize
+        self.radius = nn.Parameter(torch.ones(1))
+        self.model = PEwoDirectEmbedding(jsonSeqFile)
+
+    def forward (self, posUniProtIDs, queryUniProtIDs):
+        posEmbeds = []
+        for batch_start in range(0, len(posUniProtIDs), self.batchSize):
+            batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
+            posEmbeds.append(self.model(batchIDs))
+        posEmbeddings = torch.cat(posEmbeds, dim=0)
+        posPrototype = torch.mean(posEmbeddings, dim=0)
+
+        queryEmbeds = []
+        for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
+            batchIDs = queryUniProtIDs[batch_start:batch_start+self.batchSize]
+            queryEmbeds.append(self.model(batchIDs))
+        queryEmbeddings = torch.cat(queryEmbeds, dim=0)
+
+        queryDists = queryEmbeddings - posPrototype.reshape((1,-1))
+        queryDists = torch.pow(queryDists, 2)
+        queryDists = torch.sum(queryDists, dim=1)
+        queryDists = torch.sqrt(queryDists) # [numExamples]
+
+        coeff = torch.log(torch.tensor([2]).to(posPrototype.device)) / self.radius
+        probInside = torch.exp(-queryDists * coeff)
+        probOutside = torch.ones(probInside.shape).to(posPrototype.device) - probInside
+        probs = torch.stack((probInside, probOutside), dim=1)
+        
+        return probs # [numExamples, 2]
+
+class BCwoGAT (nn.Module) :
+    def __init__ (self, batchSize, jsonSeqFile):
+        super().__init__()
+        self.batchSize = batchSize
+        self.radius = nn.Parameter(torch.ones(1))
+        self.model = PEwoGAT(jsonSeqFile)
+
+    def forward (self, posUniProtIDs, queryUniProtIDs):
+        posEmbeds = []
+        for batch_start in range(0, len(posUniProtIDs), self.batchSize):
+            batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
+            posEmbeds.append(self.model(batchIDs))
+        posEmbeddings = torch.cat(posEmbeds, dim=0)
+        posPrototype = torch.mean(posEmbeddings, dim=0)
+
+        queryEmbeds = []
+        for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
+            batchIDs = queryUniProtIDs[batch_start:batch_start+self.batchSize]
+            queryEmbeds.append(self.model(batchIDs))
+        queryEmbeddings = torch.cat(queryEmbeds, dim=0)
+
+        queryDists = queryEmbeddings - posPrototype.reshape((1,-1))
+        queryDists = torch.pow(queryDists, 2)
+        queryDists = torch.sum(queryDists, dim=1)
+        queryDists = torch.sqrt(queryDists) # [numExamples]
+
+        coeff = torch.log(torch.tensor([2]).to(posPrototype.device)) / self.radius
+        probInside = torch.exp(-queryDists * coeff)
+        probOutside = torch.ones(probInside.shape).to(posPrototype.device) - probInside
+        probs = torch.stack((probInside, probOutside), dim=1)
+        
+        return probs # [numExamples, 2]
+
 
 class ballClassifier (nn.Module) :
     def __init__ (self, batchSize, jsonSeqFile):
