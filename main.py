@@ -23,6 +23,24 @@ DEVICE = 'cuda'
 PATH = 'data/go_tasks.csv'
 # learning_rates = [1e-6, 5e-6, 1e-5]
 
+
+def get_support_and_query_ids(row):
+    pos_ids = ast.literal_eval(row["Positive IDs"])
+    rand_pos_ids = random.sample(pos_ids, k=8)
+    support_ids = rand_pos_ids[:5]
+    query_pos_ids = rand_pos_ids[5:]
+
+    neg_ids = ast.literal_eval(row["Negative IDs"])
+    if len(neg_ids) < 3:
+        all_other = ast.literal_eval(row["All Other IDs"])
+        query_neg_ids = random.sample(neg_ids, k=len(neg_ids))
+        query_neg_ids += random.sample(all_other, k=3 - len(neg_ids))
+    else:
+        query_neg_ids = random.sample(neg_ids, k=3)
+
+    return support_ids, query_pos_ids, query_neg_ids
+
+
 def main(args):
 
     if args.device == "cuda" and torch.cuda.is_available():
@@ -75,19 +93,7 @@ def main(args):
         for index, row in tqdm(train_df.iterrows(), desc=f'Training epoch: {epoch}'):  # Iterating over each task
             optimizer.zero_grad()
 
-            pos_ids = ast.literal_eval(row["Positive IDs"])
-            rand_pos_ids = random.sample(pos_ids, k=8)
-            support_ids = rand_pos_ids[:5]
-            query_pos_ids = rand_pos_ids[5:]
-
-            neg_ids = ast.literal_eval(row["Negative IDs"])
-            if len(neg_ids) < 3:
-                all_other = ast.literal_eval(row["All Other IDs"])
-                query_neg_ids = random.sample(neg_ids, k=len(neg_ids))
-                query_neg_ids += random.sample(all_other, k=3-len(neg_ids))
-            else:
-                query_neg_ids = random.sample(neg_ids, k=3)
-
+            support_ids, query_pos_ids, query_neg_ids = get_support_and_query_ids(row)
             probs = ball(support_ids, query_pos_ids + query_neg_ids)
             targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE).to(torch.int64)
             loss = F.cross_entropy(torch.log(probs), targets)
@@ -109,11 +115,7 @@ def main(args):
                 with torch.no_grad():
                     losses, accuracies = [], []
                     for iter_val, row_val in tqdm(val_df.iterrows(), desc=f"Val Training Epoch {epoch}"):
-                        pos_ids_val, neg_ids_val = ast.literal_eval(row_val["Positive IDs"]), ast.literal_eval(row_val["Negative IDs"])
-                        rand_pos_ids_val = random.sample(pos_ids_val, k=8)
-                        support_ids_val = rand_pos_ids_val[:5]
-                        query_pos_ids_val = rand_pos_ids_val[5:]
-                        query_neg_ids_val = random.sample(neg_ids_val, k=3)
+                        support_ids_val, query_pos_ids_val, query_neg_ids_val = get_support_and_query_ids(row_val)
                         probs = ball(support_ids_val, query_pos_ids_val + query_neg_ids_val)
                         targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE).to(torch.int64)
                         loss = F.cross_entropy(torch.log(probs), targets)
