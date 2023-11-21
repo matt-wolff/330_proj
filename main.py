@@ -3,6 +3,7 @@ import os
 import sys
 sys.path.append('..')
 
+import numpy as np
 import pandas as pd
 import torch.optim as optim
 from model import ballClassifier
@@ -30,7 +31,7 @@ def main(args):
     else:
         DEVICE = "cpu"
 
-    log_dir = f'./logs/milestone_run_1'
+    log_dir = f'./logs/{args.run_name}'
     print(f'log_dir: {log_dir}')
     writer = tensorboard.SummaryWriter(log_dir=log_dir)
 
@@ -130,7 +131,7 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate', type=float, default=5e-4,
                         help='learning rate for the network')
     parser.add_argument('--device', type=str, default='cuda')
-    parser.add_argumnt('--run_name', type=str, default='temp')
+    parser.add_argument('--run_name', type=str, default='temp')
     
     # parser.add_argument('--datadir', default='xxx', type=str, help='directory for datasets.')
 
