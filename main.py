@@ -112,8 +112,8 @@ def main(args):
                         accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
                         losses.append(loss)
                         accuracies.append(accuracy)
-                    loss_val = torch.mean(losses)
-                    accuracies_val = torch.mean(accuracies)
+                    loss_val = torch.mean(torch.Tensor(losses))
+                    accuracies_val = torch.mean(torch.Tensor(accuracies))
 
                     writer.add_scalar('loss/val', loss_val, i_step)
                     writer.add_scalar(
