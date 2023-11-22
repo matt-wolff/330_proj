@@ -22,6 +22,10 @@ DEVICE = 'cuda'
 # VAL_PATH = 'data/go_tasks.csv'
 PATH = 'data/go_tasks.csv'
 # learning_rates = [1e-6, 5e-6, 1e-5]
+SEED = 42
+torch.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
+random.seed(SEED)
 
 
 def get_support_and_query_ids(row):
@@ -58,7 +62,7 @@ def main(args):
     df = pd.read_csv(PATH, encoding='utf-8')
     num_tasks, _ = df.shape # Note: _ = 3.
     # I chose a random split, we can modify this
-    df = df.sample(frac=1).reset_index(drop=True)
+    df = df.sample(frac=1, random_state=SEED).reset_index(drop=True)
     train_df = df[:int(0.7*num_tasks)]
     num_train_tasks, _ = train_df.shape
     val_df = df[int(0.7*num_tasks):int(0.8*num_tasks)]
