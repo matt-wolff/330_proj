@@ -97,10 +97,15 @@ def main(args):
         for index, row in tqdm(train_df.iterrows(), desc=f'Training epoch: {epoch}'):  # Iterating over each task
             optimizer.zero_grad()
 
+            targets = torch.Tensor([1, 1, 1, 0, 0, 0]).to(DEVICE).to(torch.int64)
             support_ids, query_pos_ids, query_neg_ids = get_support_and_query_ids(row)
-            probs = ball(support_ids, query_pos_ids + query_neg_ids)
-            targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE).to(torch.int64)
-            loss = F.nll_loss(torch.log(probs), targets)
+            _, queryDists = ball.get_prototype_and_query_dists(support_ids, query_pos_ids + query_neg_ids)
+
+            # contrastive loss https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=1640964
+            pos_dists = queryDists[:3]
+            neg_dists = queryDists[3:]
+            loss = 0.5 * torch.sum(torch.pow(pos_dists, 2))
+            loss += 0.5 * torch.sum(torch.pow(torch.max(torch.Tensor([0]), ball.radius - neg_dists), 2))  # Doesn't add to loss if dist >= margin
 
             loss.backward()
             optimizer.step()
@@ -122,7 +127,7 @@ def main(args):
                         support_ids_val, query_pos_ids_val, query_neg_ids_val = get_support_and_query_ids(row_val)
                         probs = ball(support_ids_val, query_pos_ids_val + query_neg_ids_val)
                         targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE).to(torch.int64)
-                        loss = F.cross_entropy(torch.log(probs), targets)
+                        loss = F.nll_loss(torch.log(probs), targets)
                         accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
                         losses.append(loss)
                         accuracies.append(accuracy)

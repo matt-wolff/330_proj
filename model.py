@@ -385,27 +385,31 @@ class ballClassifier (nn.Module) :
     def __init__ (self, batchSize, jsonSeqFile):
         super().__init__()
         self.batchSize = batchSize
-        self.radius = nn.Parameter(torch.ones(1))
+        self.radius = 1
         self.model = ProteinEmbedder(jsonSeqFile)
 
-    def forward (self, posUniProtIDs, queryUniProtIDs):
+    def get_prototype_and_query_dists(self, posUniProtIDs, queryUniProtIDs):
         posEmbeds = []
         for batch_start in range(0, len(posUniProtIDs), self.batchSize):
-            batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
+            batchIDs = posUniProtIDs[batch_start:batch_start + self.batchSize]
             posEmbeds.append(self.model(batchIDs))
         posEmbeddings = torch.cat(posEmbeds, dim=0)
         posPrototype = torch.mean(posEmbeddings, dim=0)
 
         queryEmbeds = []
         for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
-            batchIDs = queryUniProtIDs[batch_start:batch_start+self.batchSize]
+            batchIDs = queryUniProtIDs[batch_start:batch_start + self.batchSize]
             queryEmbeds.append(self.model(batchIDs))
         queryEmbeddings = torch.cat(queryEmbeds, dim=0)
 
-        queryDists = queryEmbeddings - posPrototype.reshape((1,-1))
+        queryDists = queryEmbeddings - posPrototype.reshape((1, -1))
         queryDists = torch.pow(queryDists, 2)
         queryDists = torch.sum(queryDists, dim=1)
-        queryDists = torch.sqrt(queryDists) # [numExamples]
+        queryDists = torch.sqrt(queryDists)  # [numExamples]
+        return posPrototype, queryDists
+
+    def forward(self, posUniProtIDs, queryUniProtIDs):
+        posPrototype, queryDists = self.get_prototype_and_query_dists(posUniProtIDs, queryUniProtIDs)
 
         coeff = torch.log(torch.tensor([2]).to(posPrototype.device)) / self.radius
         probInside = torch.exp(-queryDists * coeff)
