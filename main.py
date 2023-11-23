@@ -71,7 +71,7 @@ def main(args):
 
     lr = args.learning_rate
 
-    ball = ballClassifier(batchSize=8, jsonSeqFile='data/residues.json').to(DEVICE)
+    ball = ballClassifier(batchSize=8).to(DEVICE)
 
     def initializeParams(module): ## TODO when you add in the pretrained model; ensure you do not initialize that
         if isinstance(module, torch.nn.Linear):

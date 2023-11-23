@@ -281,112 +281,13 @@ class prototypeClassifier (nn.Module):
         
         return queryDists.T # [numExamples, 2]
 
-class BCwoPostCombination (nn.Module) :
-    def __init__ (self, batchSize, jsonSeqFile):
-        super().__init__()
-        self.batchSize = batchSize
-        self.radius = nn.Parameter(torch.ones(1))
-        self.model = PEwoPostCombination(jsonSeqFile)
-
-    def forward (self, posUniProtIDs, queryUniProtIDs):
-        posEmbeds = []
-        for batch_start in range(0, len(posUniProtIDs), self.batchSize):
-            batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
-            posEmbeds.append(self.model(batchIDs))
-        posEmbeddings = torch.cat(posEmbeds, dim=0)
-        posPrototype = torch.mean(posEmbeddings, dim=0)
-
-        queryEmbeds = []
-        for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
-            batchIDs = queryUniProtIDs[batch_start:batch_start+self.batchSize]
-            queryEmbeds.append(self.model(batchIDs))
-        queryEmbeddings = torch.cat(queryEmbeds, dim=0)
-
-        queryDists = queryEmbeddings - posPrototype.reshape((1,-1))
-        queryDists = torch.pow(queryDists, 2)
-        queryDists = torch.sum(queryDists, dim=1)
-        queryDists = torch.sqrt(queryDists) # [numExamples]
-
-        coeff = torch.log(torch.tensor([2]).to(posPrototype.device)) / self.radius
-        probInside = torch.exp(-queryDists * coeff)
-        probOutside = torch.ones(probInside.shape).to(posPrototype.device) - probInside
-        probs = torch.stack((probInside, probOutside), dim=1)
-        
-        return probs # [numExamples, 2]
-
-class BCwoDirectEmbedding (nn.Module) :
-    def __init__ (self, batchSize, jsonSeqFile):
-        super().__init__()
-        self.batchSize = batchSize
-        self.radius = nn.Parameter(torch.ones(1))
-        self.model = PEwoDirectEmbedding(jsonSeqFile)
-
-    def forward (self, posUniProtIDs, queryUniProtIDs):
-        posEmbeds = []
-        for batch_start in range(0, len(posUniProtIDs), self.batchSize):
-            batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
-            posEmbeds.append(self.model(batchIDs))
-        posEmbeddings = torch.cat(posEmbeds, dim=0)
-        posPrototype = torch.mean(posEmbeddings, dim=0)
-
-        queryEmbeds = []
-        for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
-            batchIDs = queryUniProtIDs[batch_start:batch_start+self.batchSize]
-            queryEmbeds.append(self.model(batchIDs))
-        queryEmbeddings = torch.cat(queryEmbeds, dim=0)
-
-        queryDists = queryEmbeddings - posPrototype.reshape((1,-1))
-        queryDists = torch.pow(queryDists, 2)
-        queryDists = torch.sum(queryDists, dim=1)
-        queryDists = torch.sqrt(queryDists) # [numExamples]
-
-        coeff = torch.log(torch.tensor([2]).to(posPrototype.device)) / self.radius
-        probInside = torch.exp(-queryDists * coeff)
-        probOutside = torch.ones(probInside.shape).to(posPrototype.device) - probInside
-        probs = torch.stack((probInside, probOutside), dim=1)
-        
-        return probs # [numExamples, 2]
-
-class BCwoGAT (nn.Module) :
-    def __init__ (self, batchSize, jsonSeqFile):
-        super().__init__()
-        self.batchSize = batchSize
-        self.radius = nn.Parameter(torch.ones(1))
-        self.model = PEwoGAT(jsonSeqFile)
-
-    def forward (self, posUniProtIDs, queryUniProtIDs):
-        posEmbeds = []
-        for batch_start in range(0, len(posUniProtIDs), self.batchSize):
-            batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
-            posEmbeds.append(self.model(batchIDs))
-        posEmbeddings = torch.cat(posEmbeds, dim=0)
-        posPrototype = torch.mean(posEmbeddings, dim=0)
-
-        queryEmbeds = []
-        for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
-            batchIDs = queryUniProtIDs[batch_start:batch_start+self.batchSize]
-            queryEmbeds.append(self.model(batchIDs))
-        queryEmbeddings = torch.cat(queryEmbeds, dim=0)
-
-        queryDists = queryEmbeddings - posPrototype.reshape((1,-1))
-        queryDists = torch.pow(queryDists, 2)
-        queryDists = torch.sum(queryDists, dim=1)
-        queryDists = torch.sqrt(queryDists) # [numExamples]
-
-        coeff = torch.log(torch.tensor([2]).to(posPrototype.device)) / self.radius
-        probInside = torch.exp(-queryDists * coeff)
-        probOutside = torch.ones(probInside.shape).to(posPrototype.device) - probInside
-        probs = torch.stack((probInside, probOutside), dim=1)
-        
-        return probs # [numExamples, 2]
-
 
 class ballClassifier (nn.Module) :
-    def __init__ (self, batchSize, jsonSeqFile):
+    def __init__ (self, batchSize, model=ProteinEmbedder('data/residues.json')):
         super().__init__()
         self.batchSize = batchSize
         self.radius = 1
-        self.model = ProteinEmbedder(jsonSeqFile)
+        self.model = model  # Ablated options: PEwoGAT, PEwoDirectEmbedding, PEwoPostCombination
 
     def get_prototype_and_query_dists(self, posUniProtIDs, queryUniProtIDs):
         posEmbeds = []
@@ -416,7 +317,7 @@ class ballClassifier (nn.Module) :
         probOutside = torch.ones(probInside.shape).to(posPrototype.device) - probInside
         probs = torch.stack((probInside, probOutside), dim=1)
         
-        return probs # [numExamples, 2]
+        return probs  # [numExamples, 2]
 
     
 
