@@ -100,7 +100,7 @@ def main(args):
             support_ids, query_pos_ids, query_neg_ids = get_support_and_query_ids(row)
             probs = ball(support_ids, query_pos_ids + query_neg_ids)
             targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE).to(torch.int64)
-            loss = F.cross_entropy(torch.log(probs), targets)
+            loss = F.nll_loss(torch.log(probs), targets)
 
             loss.backward()
             optimizer.step()
