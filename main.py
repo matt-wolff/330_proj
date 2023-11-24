@@ -145,7 +145,6 @@ def train(hyper,train_df,val_df,DEVICE):
                         accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
                         val_losses.append(loss.item())
                         val_accuracies.append(accuracy)
-                        break
                     loss_val = torch.mean(torch.Tensor(val_losses))
                     accuracy_val = torch.mean(torch.Tensor(val_accuracies))
 

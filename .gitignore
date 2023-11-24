@@ -2,3 +2,5 @@ data/*
 .idea
 .DS_Store
 __pycache__
+models/baseline/test_models/*
+models/baseline/val_models/*

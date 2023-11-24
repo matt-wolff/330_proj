@@ -223,7 +223,7 @@ class ProteinEmbedder(nn.Module):
             nn.LeakyReLU(),
             nn.LayerNorm(512),
         )
-        self.projection = nn.Linear(512, 32) # Assumes projection space is 32d
+        self.projection = nn.Linear(512, 32)  # Assumes projection space is 32d
 
 
 
