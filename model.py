@@ -12,7 +12,7 @@ def parseNode(cn, cl, dx):
 
 # No Batching currently
 class GatFCM(torch.nn.Module): # GAT Form Contact Map
-    def __init__(self):
+    def __init__(self, hyper):
 
         super().__init__()
 
@@ -63,13 +63,12 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
         return logits
 
 class PEwoGAT(nn.Module):
-    def __init__(self, jsonSeqDataFile):
+    def __init__(self, hyper, jsonSeqDataFile):
         super().__init__()
 
         with open(jsonSeqDataFile, 'r') as f:
             self.proteinSeqs = json.load(f)
         
-        self.gat = GatFCM()
         self.preReadout = nn.Linear(256, 512) # While this does create some unused vector space, it is the best to maintain model expressivity
 
         self.postCombination = nn.Sequential(
@@ -107,14 +106,14 @@ class PEwoGAT(nn.Module):
         return projected
 
 class PEwoDirectEmbedding(nn.Module):
-    def __init__(self, jsonSeqDataFile):
+    def __init__(self, hyper, jsonSeqDataFile):
         super().__init__()
 
         with open(jsonSeqDataFile, 'r') as f:
             self.proteinSeqs = json.load(f)
 
         
-        self.gat = GatFCM()
+        self.gat = GatFCM(hyper)
         self.preReadout = nn.Linear(256, 512)  # Creates some wasted vector space but it's OK
 
         self.postCombination = nn.Sequential(
@@ -159,14 +158,14 @@ class PEwoDirectEmbedding(nn.Module):
         return projected
 
 class PEwoPostCombination(nn.Module):
-    def __init__(self, jsonSeqDataFile):
+    def __init__(self, hyper, jsonSeqDataFile):
         super().__init__()
 
         with open(jsonSeqDataFile, 'r') as f:
             self.proteinSeqs = json.load(f)
 
         
-        self.gat = GatFCM()
+        self.gat = GatFCM(hyper)
         self.preReadout = nn.Linear(256, 256) 
         self.postMean = nn.Linear(480, 256)
         self.projection = nn.Linear(512, 32) # Assumes projection space is 32d
@@ -198,14 +197,14 @@ class PEwoPostCombination(nn.Module):
         return projected
 
 class ProteinEmbedder(nn.Module):
-    def __init__(self, jsonSeqDataFile):
+    def __init__(self, hyper, jsonSeqDataFile):
         super().__init__()
 
         with open(jsonSeqDataFile, 'r') as f:
             self.proteinSeqs = json.load(f)
 
         
-        self.gat = GatFCM()
+        self.gat = GatFCM(hyper)
         self.preReadout = nn.Linear(256, 256) 
         self.postMean = nn.Linear(480, 256)
 
@@ -300,7 +299,9 @@ class prototypeClassifier (nn.Module):
 
 
 class ballClassifier (nn.Module) :
-    def __init__ (self, batchSize, model=ProteinEmbedder('data/residues.json')):
+    def __init__ (self, hyper, batchSize, model=None):
+        if model is None:
+            model = ProteinEmbedder(hyper, 'data/residues.json')
         super().__init__()
         self.batchSize = batchSize
         self.radius = 1
