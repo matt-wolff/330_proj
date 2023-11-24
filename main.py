@@ -66,6 +66,7 @@ def main(args):
 
     train_df = pd.read_csv('data/train_go_tasks.csv', encoding='utf-8')
     val_df = pd.read_csv('data/val_go_tasks.csv', encoding='utf-8')
+    test_df = pd.read_csv('data/test_go_tasks.csv', encoding='utf-8')
 
     if args.mode=="train":
         hyper=dict()
@@ -79,12 +80,22 @@ def main(args):
         hyperranges["num_epochs"] = [5,10]
         hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
         hypers = getRangeCombos(hyperranges)
-        import pdb
-        pdb.set_trace()
         for hyper in hypers:
             train(hyper,train_df,val_df,DEVICE)
+    
+    # The following require model loading
+    if (args.model_type == "ball"):
+        model = ballClassifier(batchSize=1) # BS is dummy, will be overwritten on load
+        emb = ESMEmbedder(DEVICE).to(DEVICE)
+        model.model.emb = emb
+    model.load_state_dict(torch.load(args.model_path))
+    model.to(DEVICE)
 
-        
+    if args.mode=="validate":
+        validate(model,val_df,DEVICE)
+    elif args.mode=="test":
+        test(model,test_df,DEVICE)
+       
 
 def train(hyper,train_df,val_df,DEVICE):
     log_dir = f'./logs/{hyper["run_name"]}'
@@ -96,7 +107,7 @@ def train(hyper,train_df,val_df,DEVICE):
     ball = ballClassifier(batchSize=8).to(DEVICE)
     num_train_tasks, _ = train_df.shape
 
-    def initializeParams(module): ## TODO when you add in the pretrained model; ensure you do not initialize that
+    def initializeParams(module): ## NOTE when you add in the pretrained model; ensure you do not initialize that
         if isinstance(module, torch.nn.Linear):
             module.weight.data = torch.nn.init.xavier_normal_(module.weight.data, gain=torch.nn.init.calculate_gain('relu'))
             if module.bias is not None:
@@ -115,7 +126,7 @@ def train(hyper,train_df,val_df,DEVICE):
 
     optimizer = optim.AdamW(ball.parameters(), lr=lr)
     for epoch in range(num_epochs):
-        for index, row in tqdm(train_df.iterrows(), desc=f'Training epoch: {epoch}'):  # Iterating over each task
+        for index, row in tqdm(train_df.iterrows(), desc=f'Training epoch: {epoch}', total=len(train_df.index)):  # Iterating over each task
             optimizer.zero_grad()
 
             support_ids, query_pos_ids, query_neg_ids = get_support_and_query_ids(row)
@@ -134,41 +145,50 @@ def train(hyper,train_df,val_df,DEVICE):
             writer.add_scalar('loss/train', loss.item(), i_step)
 
             if index % VAL_INTERVAL == 0:
-                print("Start Validation...")
-                with torch.no_grad():
-                    val_losses, val_accuracies = [], []
-                    for iter_val, row_val in tqdm(val_df.iterrows(), desc=f"Val Training Epoch {epoch}"):
-                        support_ids_val, query_pos_ids_val, query_neg_ids_val = get_support_and_query_ids(row_val)
-                        probs = ball(support_ids_val, query_pos_ids_val + query_neg_ids_val)
-                        targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE).to(torch.int64)
-                        loss = F.nll_loss(torch.log(probs), targets)
-                        accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
-                        val_losses.append(loss.item())
-                        val_accuracies.append(accuracy)
-                        break
-                    loss_val = torch.mean(torch.Tensor(torch.Tensor(val_losses)))
-                    accuracy_val = torch.mean(torch.Tensor(torch.Tensor(val_accuracies)))
-
-                    writer.add_scalar('loss/val', loss_val, i_step)
-                    writer.add_scalar(
-                        'val_accuracy',
-                        accuracy_val,
-                        i_step
-                    )
+                validate(ball,val_df,DEVICE,writer,i_step)
 
                 if (index + VAL_INTERVAL) % num_train_tasks > index % num_train_tasks:
                     torch.save(ball.state_dict(), f'ball_run2_epoch{epoch}.pt')
 
 
+def validate(model,ds,device,writer=None,i_step=None): # Writer requires i_step
+    print("Starting Validation...")
+    loss,acc = testcore(model,ds,"Validating",device)
+    if writer is not None:
+        writer.add_scalar('loss/val', loss, i_step)
+        writer.add_scalar('val_accuracy', acc, i_step)
+
+def test(model,ds,device):
+    print("Starting Testing...")
+    loss,acc = testcore(model,ds,"Testing",device)
+
+def testcore(model,ds,keyword,device):
+    with torch.no_grad():
+        val_losses, val_accuracies = [], []
+        for iter_val, row_val in tqdm(ds.iterrows(), desc=f"{keyword}", total=len(ds.index)):
+            support_ids_val, query_pos_ids_val, query_neg_ids_val = get_support_and_query_ids(row_val)
+            probs = model(support_ids_val, query_pos_ids_val + query_neg_ids_val)
+            targets = torch.Tensor([1,1,1,0,0,0]).to(device).to(torch.int64)
+            loss = F.nll_loss(torch.log(probs), targets)
+            accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
+            val_losses.append(loss.item())
+            val_accuracies.append(accuracy)
+        loss_val = torch.mean(torch.Tensor(val_losses))
+        accuracy_val = torch.mean(torch.Tensor(val_accuracies))
+    return loss_val,accuracy_val
+
+
 if __name__ == '__main__':
-    modes = ['train', "hp_search"]
+    modes = ['train',"hp_search",'validate','test']
 
     parser = argparse.ArgumentParser('Train a Ball Classifier!')
-    parser.add_argument('--mode', type=str, help=(' '.join(modes)), default='train')
+    parser.add_argument('--mode', type=str, help=(' '.join(modes)))
     parser.add_argument('--learning_rate', type=float, default=5e-4,
                         help='learning rate for the network')
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--run_name', type=str, default='temp')
+    parser.add_argument('--model_type', type=str, default='temp')
+    parser.add_argument('--model_path', type=str, default='temp')
 
     args = parser.parse_args()
     assert(args.mode in modes)
