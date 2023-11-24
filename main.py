@@ -90,8 +90,14 @@ def main(args):
         hypers = getRangeCombos(hyperranges)
         for hyper in hypers:
             train(hyper,train_df,val_df,DEVICE)
-    # TODO the following two require model loading
-    elif args.mode=="validate":
+    
+    # The following require model loading
+    if (args.model_type == "ball"):
+        model = ballClassifier(batchSize=1) # BS is dummy, will be overwritten on load
+    model = model.load_state_dict(torch.load(args.model_path))
+    model.to(DEVICE)
+
+    if args.mode=="validate":
         validate(model,val_df,DEVICE)
     elif args.mode=="test":
         test(model,test_df,DEVICE)
@@ -187,6 +193,8 @@ if __name__ == '__main__':
                         help='learning rate for the network')
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--run_name', type=str, default='temp')
+    parser.add_argument('--model_name', type=str, default='temp')
+    parser.add_argument('--model_path', type=str, default='temp')
 
     args = parser.parse_args()
     assert(args.mode in modes)
