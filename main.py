@@ -1,12 +1,10 @@
 import argparse
-import os
 import sys
 sys.path.append('..')
 
 import pandas as pd
 import torch.optim as optim
 from model import ballClassifier
-import json
 import ast
 import random
 import torch.nn.functional as F
@@ -66,16 +64,8 @@ def main(args):
     else:
         DEVICE = "cpu"
 
-
-    #with open('data/residues.json', 'r') as f:
-    #    ID_TO_RESIDUES = json.load(f)
-
-    df = pd.read_csv(PATH, encoding='utf-8')
-    num_tasks, _ = df.shape # Note: _ = 3.
-    df = df.sample(frac=1, random_state=SEED).reset_index(drop=True)
-    train_df = df[:int(0.7*num_tasks)]
-    val_df = df[int(0.7*num_tasks):int(0.8*num_tasks)]
-    test_df = df[int(0.8*num_tasks):]
+    train_df = pd.read_csv('data/train_go_tasks.csv', encoding='utf-8')
+    val_df = pd.read_csv('data/val_go_tasks.csv', encoding='utf-8')
 
     if args.mode=="train":
         hyper=dict()
@@ -171,10 +161,10 @@ def train(hyper,train_df,val_df,DEVICE):
 
 
 if __name__ == '__main__':
-    modes = ['train',"hp_search"]
+    modes = ['train', "hp_search"]
 
     parser = argparse.ArgumentParser('Train a Ball Classifier!')
-    parser.add_argument('mode', type=str, help=(' '.join(modes)))
+    parser.add_argument('--mode', type=str, help=(' '.join(modes)), default='train')
     parser.add_argument('--learning_rate', type=float, default=5e-4,
                         help='learning rate for the network')
     parser.add_argument('--device', type=str, default='cuda')
