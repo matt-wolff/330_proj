@@ -57,6 +57,21 @@ def getRangeCombos(space):
     return hypers
             
 
+def defaultHypers(learning_rate, run_name):
+    hyper = dict()
+    hyper["learning_rate"] = learning_rate
+    hyper["num_epochs"] = 5
+    hyper["run_name"] = run_name
+    hyper["inmodel_type"] = ProteinEmbedder
+    hyper["ball_radius"] = 1
+    hyper["projection_space_dims"] = 32
+    hyper["gat_layers"] = 2
+    hyper["gat_hidden_size"] = 512
+    hyper["gat_dropout"] = 0.0
+    hyper["postcomb_dim"] = 512
+    hyper["postcomb_layers"] = 4
+    return hyper
+
 def main(args):
 
     if args.device == "cuda" and torch.cuda.is_available():
@@ -69,20 +84,7 @@ def main(args):
     test_df = pd.read_csv('data/test_go_tasks.csv', encoding='utf-8')
 
     # Allows us to not touch the hyperparameters we are not interested in modifying
-    def defaultHypers():
-        hyper = dict()
-        hyper["learning_rate"] = args.learning_rate
-        hyper["num_epochs"] = 5
-        hyper["run_name"] = args.run_name
-        hyper["inmodel_type"] = ProteinEmbedder
-        hyper["ball_radius"] = 1
-        hyper["projection_space_dims"] = 32
-        hyper["gat_layers"] = 2
-        hyper["gat_hidden_size"] = 512
-        hyper["gat_dropout"] = 0.0
-        hyper["postcomb_dim"] = 512
-        hyper["postcomb_layers"] = 4
-        return hyper
+
     def hyperrangeWrap(hyper):
         hyperranges = dict()
         for key,item in hyper.items():
@@ -90,10 +92,10 @@ def main(args):
         return hyperranges
 
     if args.mode=="train":
-        hyper = defaultHypers()
+        hyper = defaultHypers(args.learning_rate, args.run_name)
         train(hyper,train_df,val_df,DEVICE)
     elif args.mode=="hp_search":
-        hyperranges=hyperrangeWrap(defaultHypers())
+        hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate, args.run_name))
         hyperranges["learning_rate"] = [1e-4,3e-4,1e-3]
         hyperranges["num_epochs"] = [5,10]
         hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
@@ -101,7 +103,7 @@ def main(args):
         for hyper in hypers:
             train(hyper,train_df,val_df,DEVICE)
     elif args.mode=="ablate": # NOTE set these to ideal arguments except for inmodel_type
-        hyperranges=hyperrangeWrap(defaultHypers())
+        hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate, args.run_name))
         hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
         hyperranges["inmodel_type"] = [ProteinEmbedder, PEwoPostCombination,PEwoDirectEmbedding,PEwoGAT]
         hypers = getRangeCombos(hyperranges)
@@ -111,7 +113,7 @@ def main(args):
     if args.mode=="validate" or args.mode=="test":
         # The following require model loading
         if (args.model_type == "ball"):
-            hyper = defaultHypers() # These parameters are dummy, they will get replaced upon load
+            hyper = defaultHypers(args.learning_rate, args.run_name) # These parameters are dummy, they will get replaced upon load
             
             model = ballClassifier(hyper, batchSize=1) # BS is dummy, will be overwritten on load
             emb = ESMEmbedder(DEVICE).to(DEVICE)
