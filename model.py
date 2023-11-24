@@ -45,7 +45,22 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
         #self.cm = Data(CM.contiguous()).edge_index
         #self.cm = CM
 
-        return torch.cat([self.gat(x[i], CM) for i,CM in enumerate(CMs)], dim=0)
+        # TODO assert accuracy
+        #import pdb
+        #pdb.set_trace()
+        # BATCHED
+        perGIncrements = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(chainLengths).squeeze(1),dim=0)], dim=0)[:-1]
+        for i in range(len(protFileCodes)):
+            CMs[i] = CMs[i] + perGIncrements[i]
+        X = torch.cat(x,dim=0)
+        _CM = torch.cat(CMs, dim=1)
+        logits = self.gat(X, _CM)
+
+        # UNBATCHED
+        #indlogits = [self.gat(x[i],CM) for i,CM in enumerate(CMs)]
+        #logits = torch.cat(indlogits, dim=0)
+
+        return logits
 
 class PEwoGAT(nn.Module):
     def __init__(self, jsonSeqDataFile):
@@ -214,6 +229,8 @@ class ProteinEmbedder(nn.Module):
 
     def forward(self, protFileCodes):
         # Embed Part
+        #import pdb
+        #pdb.set_trace()
         seqs = [self.proteinSeqs[protFileCode] for protFileCode in protFileCodes]
         seqlens = [len(seq) for seq in seqs]
         with torch.no_grad():
