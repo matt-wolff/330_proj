@@ -90,9 +90,10 @@ def main(args):
         hypers = getRangeCombos(hyperranges)
         for hyper in hypers:
             train(hyper,train_df,val_df,DEVICE)
+    # TODO the following two require model loading
     elif args.mode=="validate":
         validate(model,val_df,DEVICE)
-     elif args.mode=="test":
+    elif args.mode=="test":
         test(model,test_df,DEVICE)
        
 
