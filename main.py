@@ -189,35 +189,54 @@ def train(hyper,train_df,val_df,DEVICE):
 
             if index % VAL_INTERVAL == 0:
                 validate(ball, val_df, DEVICE, writer, i_step)
-                if (index + VAL_INTERVAL) % num_train_tasks > index % num_train_tasks:
+                if (index + VAL_INTERVAL) // num_train_tasks > index // num_train_tasks:
                     torch.save(ball.state_dict(), f'ball_{hyper["run_name"]}_epoch{epoch}.pt')
 
 
 def validate(model,ds,device,writer=None,i_step=None): # Writer requires i_step
     print("Starting Validation...")
-    loss,acc = testcore(model,ds,"Validating",device)
+    loss,acc,tp_val,fn_val,tn_val,fp_val = testcore(model,ds,"Validating",device)
     if writer is not None:
         writer.add_scalar('loss/val', loss, i_step)
         writer.add_scalar('val_accuracy/', acc, i_step)
+        writer.add_scalar('true_positive_val/')
+        writer.add_scalar('false_positive/')
+        writer.add_scalar('true_negative_val/')
+        writer.add_scalar('false_negative_val/')
 
 def test(model,ds,device):
     print("Starting Testing...")
-    loss,acc = testcore(model,ds,"Testing",device)
+    loss,acc,tp_val,fn_val,tn_val,fp_val = testcore(model,ds,"Testing",device)
 
 def testcore(model,ds,keyword,device):
     with torch.no_grad():
-        val_losses, val_accuracies = [], []
+        val_losses, val_accuracies, tp, fn, tn, fp = [], [], [], [], [], []
         for iter_val, row_val in tqdm(ds.iterrows(), desc=f"{keyword}", total=len(ds.index)):
             support_ids_val, query_pos_ids_val, query_neg_ids_val = get_support_and_query_ids(row_val)
             probs = model(support_ids_val, query_pos_ids_val + query_neg_ids_val)
             targets = torch.Tensor([1,1,1,0,0,0]).to(device).to(torch.int64)
             loss = F.nll_loss(torch.log(probs), targets)
+            
+            true_positives = torch.sum((torch.argmax(probs,dim=1)==targets)[targets==1]).type(torch.int64).item()
+            false_negatives = 3 - true_positives
+            true_negatives = torch.sum((torch.argmax(probs,dim=1)==targets)[targets==1]).type(torch.int64).item()
+            false_positives = 3 - true_negatives
             accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
+            
             val_losses.append(loss.item())
             val_accuracies.append(accuracy)
+            tp.append(true_positives)
+            fn.append(false_negatives)
+            tn.append(true_negatives)
+            fp.append(false_positives)
+
         loss_val = torch.mean(torch.Tensor(val_losses))
         accuracy_val = torch.mean(torch.Tensor(val_accuracies))
-    return loss_val,accuracy_val
+        tp_val = torch.mean(torch.Tensor(tp))
+        fn_val = torch.mean(torch.Tensor(fn))
+        tn_val = torch.mean(torch.Tensor(tn))
+        fp_val = torch.mean(torch.Tensor(fp))
+    return loss_val,accuracy_val,tp_val,fn_val,tn_val,fp_val
 
 
 if __name__ == '__main__':
