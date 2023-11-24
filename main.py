@@ -95,15 +95,6 @@ def main(args):
             train(hyper,train_df,val_df,DEVICE)
     
     # The following require model loading
-<<<<<<< HEAD
-    if args.mode=="validate" or args.mode=="test":
-        if (args.model_type == "ball"):
-            model = ballClassifier(batchSize=1) # BS is dummy, will be overwritten on load
-            emb = ESMEmbedder(DEVICE).to(DEVICE)
-            model.model.emb = emb
-        model.load_state_dict(torch.load(args.model_path))
-        model.to(DEVICE)
-=======
     if (args.model_type == "ball"):
         hyper=dict()  # These parameters are dummy, they will get replaced upon load
         hyper["learning_rate"] = args.learning_rate
@@ -115,9 +106,8 @@ def main(args):
         model.model.emb = emb
     model.load_state_dict(torch.load(args.model_path))
     model.to(DEVICE)
->>>>>>> 40dd86b4fa4d84d7b50fbb4cc595f09472acf4bf
 
-        if args.mode=="validate":
+        if args.mode=="validate": 
             validate(model,val_df,DEVICE)
         elif args.mode=="test":
             test(model,test_df,DEVICE)
