@@ -4,7 +4,7 @@ sys.path.append('..')
 
 import pandas as pd
 import torch.optim as optim
-from model import ballClassifier
+from model import ballClassifier,ProteinEmbedder, PEwoPostCombination,PEwoDirectEmbedding,PEwoGAT
 import ast
 import random
 import torch.nn.functional as F
@@ -73,17 +73,29 @@ def main(args):
         hyper["learning_rate"] = args.learning_rate
         hyper["num_epochs"] = 5
         hyper["run_name"] = args.run_name
+        hyper["inmodel_type"] = ProteinEmbedder
         train(hyper,train_df,val_df,DEVICE)
     elif args.mode=="hp_search":
         hyperranges=dict()
         hyperranges["learning_rate"] = [1e-4,3e-4,1e-3]
         hyperranges["num_epochs"] = [5,10]
         hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
+        hyper["inmodel_type"] = ProteinEmbedder
+        hypers = getRangeCombos(hyperranges)
+        for hyper in hypers:
+            train(hyper,train_df,val_df,DEVICE)
+    elif args.mode=="ablate": # TODO set these to ideal arguments except for inmodel_type
+        hyperranges=dict()
+        hyperranges["learning_rate"] = [3e-3]
+        hyperranges["num_epochs"] = [5]
+        hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
+        hyperranges["inmodel_type"] = [ProteinEmbedder, PEwoPostCombination,PEwoDirectEmbedding,PEwoGAT]
         hypers = getRangeCombos(hyperranges)
         for hyper in hypers:
             train(hyper,train_df,val_df,DEVICE)
     
     # The following require model loading
+<<<<<<< HEAD
     if args.mode=="validate" or args.mode=="test":
         if (args.model_type == "ball"):
             model = ballClassifier(batchSize=1) # BS is dummy, will be overwritten on load
@@ -91,6 +103,19 @@ def main(args):
             model.model.emb = emb
         model.load_state_dict(torch.load(args.model_path))
         model.to(DEVICE)
+=======
+    if (args.model_type == "ball"):
+        hyper=dict()  # These parameters are dummy, they will get replaced upon load
+        hyper["learning_rate"] = args.learning_rate
+        hyper["num_epochs"] = 5
+        hyper["run_name"] = args.run_name
+        
+        model = ballClassifier(hyper, batchSize=1) # BS is dummy, will be overwritten on load
+        emb = ESMEmbedder(DEVICE).to(DEVICE)
+        model.model.emb = emb
+    model.load_state_dict(torch.load(args.model_path))
+    model.to(DEVICE)
+>>>>>>> 40dd86b4fa4d84d7b50fbb4cc595f09472acf4bf
 
         if args.mode=="validate":
             validate(model,val_df,DEVICE)
@@ -105,7 +130,10 @@ def train(hyper,train_df,val_df,DEVICE):
 
     lr = hyper["learning_rate"]
     num_epochs = hyper["num_epochs"]
-    ball = ballClassifier(batchSize=8).to(DEVICE)
+
+    inmodel = hyper["inmodel_type"](hyper, "data/residues.json")
+    inmodel = inmodel.to(DEVICE)
+    ball = ballClassifier(hyper,batchSize=8,model=inmodel).to(DEVICE)
     num_train_tasks, _ = train_df.shape
 
     def initializeParams(module): ## NOTE when you add in the pretrained model; ensure you do not initialize that
@@ -113,7 +141,6 @@ def train(hyper,train_df,val_df,DEVICE):
             module.weight.data = torch.nn.init.xavier_normal_(module.weight.data, gain=torch.nn.init.calculate_gain('relu'))
             if module.bias is not None:
                 module.bias.data.zero_()
-
         if isinstance(module, torch.nn.LayerNorm) or isinstance(module, torch.nn.BatchNorm1d) or isinstance(module, torch.nn.BatchNorm2d):
             module.weight.data.fill_(1.0)
             module.bias.data.zero_()
@@ -180,7 +207,7 @@ def testcore(model,ds,keyword,device):
 
 
 if __name__ == '__main__':
-    modes = ['train',"hp_search",'validate','test']
+    modes = ['train',"hp_search",'validate','test','ablate']
 
     parser = argparse.ArgumentParser('Train a Ball Classifier!')
     parser.add_argument('--mode', type=str, help=(' '.join(modes)))
