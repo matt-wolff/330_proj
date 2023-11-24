@@ -68,26 +68,33 @@ def main(args):
     val_df = pd.read_csv('data/val_go_tasks.csv', encoding='utf-8')
     test_df = pd.read_csv('data/test_go_tasks.csv', encoding='utf-8')
 
-    if args.mode=="train":
+    # Allows us to not touch the hyperparameters we are not interested in modifying
+    def defaultHypers():
         hyper=dict()
         hyper["learning_rate"] = args.learning_rate
         hyper["num_epochs"] = 5
         hyper["run_name"] = args.run_name
         hyper["inmodel_type"] = ProteinEmbedder
+        return hyper
+    def hyperrangeWrap(hyper):
+        hyperranges = dict()
+        for key,item in hyper.items():
+            hyperranges[key] = [item]
+        return hyperranges
+
+    if args.mode=="train":
+        hyper = defaultHypers()
         train(hyper,train_df,val_df,DEVICE)
     elif args.mode=="hp_search":
-        hyperranges=dict()
+        hyperranges=hyperrangeWrap(defaultHypers())
         hyperranges["learning_rate"] = [1e-4,3e-4,1e-3]
         hyperranges["num_epochs"] = [5,10]
         hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
-        hyper["inmodel_type"] = ProteinEmbedder
         hypers = getRangeCombos(hyperranges)
         for hyper in hypers:
             train(hyper,train_df,val_df,DEVICE)
     elif args.mode=="ablate": # TODO set these to ideal arguments except for inmodel_type
-        hyperranges=dict()
-        hyperranges["learning_rate"] = [3e-3]
-        hyperranges["num_epochs"] = [5]
+        hyperranges=hyperrangeWrap(defaultHypers())
         hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
         hyperranges["inmodel_type"] = [ProteinEmbedder, PEwoPostCombination,PEwoDirectEmbedding,PEwoGAT]
         hypers = getRangeCombos(hyperranges)
@@ -96,11 +103,7 @@ def main(args):
     
     # The following require model loading
     if (args.model_type == "ball"):
-        hyper=dict()  # These parameters are dummy, they will get replaced upon load
-        hyper["learning_rate"] = args.learning_rate
-        hyper["num_epochs"] = 5
-        hyper["run_name"] = args.run_name
-        
+        hyper = defaultHypers() # These parameters are dummy, they will get replaced upon load
         model = ballClassifier(hyper, batchSize=1) # BS is dummy, will be overwritten on load
         emb = ESMEmbedder(DEVICE).to(DEVICE)
         model.model.emb = emb
