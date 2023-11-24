@@ -13,7 +13,9 @@ import torch_geometric as pyg
 import torch
 from embeddings import ESMEmbedder
 from tqdm import tqdm
+from datetime import datetime
 import copy
+import json
 
 VAL_INTERVAL = 50
 DEVICE = 'cuda'
@@ -57,11 +59,11 @@ def getRangeCombos(space):
     return hypers
             
 
-def defaultHypers(learning_rate, run_name):
+def defaultHypers(learning_rate):#, run_name):
     hyper = dict()
     hyper["learning_rate"] = learning_rate
     hyper["num_epochs"] = 5
-    hyper["run_name"] = run_name
+    #hyper["run_name"] = run_name
     hyper["inmodel_type"] = ProteinEmbedder
     hyper["ball_radius"] = 1
     hyper["projection_space_dims"] = 32
@@ -92,19 +94,19 @@ def main(args):
         return hyperranges
 
     if args.mode=="train":
-        hyper = defaultHypers(args.learning_rate, args.run_name)
+        hyper = defaultHypers(args.learning_rate)#, args.run_name)
         train(hyper,train_df,val_df,DEVICE)
     elif args.mode=="hp_search":
-        hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate, args.run_name))
+        hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate))#, args.run_name))
         hyperranges["learning_rate"] = [1e-4,3e-4,1e-3]
         hyperranges["num_epochs"] = [5,10]
-        hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
+        #hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
         hypers = getRangeCombos(hyperranges)
         for hyper in hypers:
             train(hyper,train_df,val_df,DEVICE)
     elif args.mode=="ablate": # NOTE set these to ideal arguments except for inmodel_type
-        hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate, args.run_name))
-        hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
+        hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate))#, args.run_name))
+        #hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
         hyperranges["inmodel_type"] = [ProteinEmbedder, PEwoPostCombination,PEwoDirectEmbedding,PEwoGAT]
         hypers = getRangeCombos(hyperranges)
         for hyper in hypers:
@@ -113,7 +115,7 @@ def main(args):
     if args.mode=="validate" or args.mode=="test":
         # The following require model loading
         if (args.model_type == "ball"):
-            hyper = defaultHypers(args.learning_rate, args.run_name) # These parameters are dummy, they will get replaced upon load
+            hyper = defaultHypers(args.learning_rate)#, args.run_name) # These parameters are dummy, they will get replaced upon load
             
             model = ballClassifier(hyper, batchSize=1) # BS is dummy, will be overwritten on load
             emb = ESMEmbedder(DEVICE).to(DEVICE)
@@ -131,7 +133,13 @@ def main(args):
        
 
 def train(hyper,train_df,val_df,DEVICE):
-    log_dir = f'./logs/{hyper["run_name"]}'
+    run_name = "run_"+str(datetime.now()).replace(" ","_")
+    hyper["run_name"] = run_name
+    with open("modelhistory", 'a') as f:
+        f.write(",  ".join([str(a)+":"+str(b) for a,b in hyper.items()]))
+        f.write("\n")
+
+    log_dir = f'./logs/{run_name}'
     print(f'log_dir: {log_dir}')
     writer = tensorboard.SummaryWriter(log_dir=log_dir)
 
