@@ -94,18 +94,20 @@ def main(args):
         for hyper in hypers:
             train(hyper,train_df,val_df,DEVICE)
     
-    # The following require model loading
-    if (args.model_type == "ball"):
-        hyper=dict()  # These parameters are dummy, they will get replaced upon load
-        hyper["learning_rate"] = args.learning_rate
-        hyper["num_epochs"] = 5
-        hyper["run_name"] = args.run_name
-        
-        model = ballClassifier(hyper, batchSize=1) # BS is dummy, will be overwritten on load
-        emb = ESMEmbedder(DEVICE).to(DEVICE)
-        model.model.emb = emb
-    model.load_state_dict(torch.load(args.model_path))
-    model.to(DEVICE)
+    if args.mode=="validate" or args.mode=="test":
+        # The following require model loading
+        if (args.model_type == "ball"):
+            hyper=dict()  # These parameters are dummy, they will get replaced upon load
+            hyper["learning_rate"] = args.learning_rate
+            hyper["num_epochs"] = 5
+            hyper["run_name"] = args.run_name
+            
+            model = ballClassifier(hyper, batchSize=1) # BS is dummy, will be overwritten on load
+            emb = ESMEmbedder(DEVICE).to(DEVICE)
+            model.model.emb = emb
+
+        model.load_state_dict(torch.load(args.model_path))
+        model.to(DEVICE)
 
         if args.mode=="validate": 
             validate(model,val_df,DEVICE)
