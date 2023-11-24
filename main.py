@@ -15,6 +15,7 @@ import torch_geometric as pyg
 import torch
 from embeddings import ESMEmbedder
 from tqdm import tqdm
+import copy
 
 VAL_INTERVAL = 50
 DEVICE = 'cuda'
@@ -44,6 +45,19 @@ def get_support_and_query_ids(row):
 
     return support_ids, query_pos_ids, query_neg_ids
 
+def getRangeCombos(space):
+    hypers = list()
+    hypers.append(dict())
+    for hname,hrange in space.items():
+        nhypers = list()
+        for hyper in hypers:
+            for hval in hrange:
+                nhyper = copy.deepcopy(hyper)
+                nhyper[hname] = hval
+                nhypers.append(nhyper)
+        hypers = nhypers
+    return hypers
+            
 
 def main(args):
 
@@ -52,26 +66,45 @@ def main(args):
     else:
         DEVICE = "cpu"
 
-    log_dir = f'./logs/{args.run_name}'
-    print(f'log_dir: {log_dir}')
-    writer = tensorboard.SummaryWriter(log_dir=log_dir)
 
-    with open('data/residues.json', 'r') as f:
-        ID_TO_RESIDUES = json.load(f)
+    #with open('data/residues.json', 'r') as f:
+    #    ID_TO_RESIDUES = json.load(f)
 
     df = pd.read_csv(PATH, encoding='utf-8')
     num_tasks, _ = df.shape # Note: _ = 3.
-    # I chose a random split, we can modify this
     df = df.sample(frac=1, random_state=SEED).reset_index(drop=True)
     train_df = df[:int(0.7*num_tasks)]
-    num_train_tasks, _ = train_df.shape
     val_df = df[int(0.7*num_tasks):int(0.8*num_tasks)]
     test_df = df[int(0.8*num_tasks):]
-    num_epochs = 5 # Should we modify the number of epochs?
 
-    lr = args.learning_rate
+    if args.mode=="train":
+        hyper=dict()
+        hyper["learning_rate"] = args.learning_rate
+        hyper["num_epochs"] = 5
+        hyper["run_name"] = args.run_name
+        train(hyper,train_df,val_df,DEVICE)
+    elif args.mode=="hp_search":
+        hyperranges=dict()
+        hyperranges["learning_rate"] = [1e-4,3e-4,1e-3]
+        hyperranges["num_epochs"] = [5,10]
+        hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
+        hypers = getRangeCombos(hyperranges)
+        import pdb
+        pdb.set_trace()
+        for hyper in hypers:
+            train(hyper,train_df,val_df,DEVICE)
 
+        
+
+def train(hyper,train_df,val_df,DEVICE):
+    log_dir = f'./logs/{hyper["run_name"]}'
+    print(f'log_dir: {log_dir}')
+    writer = tensorboard.SummaryWriter(log_dir=log_dir)
+
+    lr = hyper["learning_rate"]
+    num_epochs = hyper["num_epochs"]
     ball = ballClassifier(batchSize=8).to(DEVICE)
+    num_train_tasks, _ = train_df.shape
 
     def initializeParams(module): ## TODO when you add in the pretrained model; ensure you do not initialize that
         if isinstance(module, torch.nn.Linear):
@@ -138,12 +171,16 @@ def main(args):
 
 
 if __name__ == '__main__':
+    modes = ['train',"hp_search"]
+
     parser = argparse.ArgumentParser('Train a Ball Classifier!')
+    parser.add_argument('mode', type=str, help=(' '.join(modes)))
     parser.add_argument('--learning_rate', type=float, default=5e-4,
                         help='learning rate for the network')
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--run_name', type=str, default='temp')
 
     args = parser.parse_args()
+    assert(args.mode in modes)
 
     main(args)
