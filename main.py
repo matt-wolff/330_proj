@@ -166,7 +166,7 @@ def train(hyper,train_df,val_df,DEVICE):
                 validate(ball,val_df,DEVICE,writer,i_step)
 
                 if (index + VAL_INTERVAL) % num_train_tasks > index % num_train_tasks:
-                    torch.save(ball.state_dict(), f'ball_run2_epoch{epoch}.pt')
+                    torch.save(ball.state_dict(), f'ball_{hyper["run_name"]}_epoch{epoch}.pt')
 
 
 def validate(model,ds,device,writer=None,i_step=None): # Writer requires i_step
@@ -174,7 +174,7 @@ def validate(model,ds,device,writer=None,i_step=None): # Writer requires i_step
     loss,acc = testcore(model,ds,"Validating",device)
     if writer is not None:
         writer.add_scalar('loss/val', loss, i_step)
-        writer.add_scalar('val_accuracy', acc, i_step)
+        writer.add_scalar('val_accuracy/', acc, i_step)
 
 def test(model,ds,device):
     print("Starting Testing...")
