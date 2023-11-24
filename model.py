@@ -45,7 +45,22 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
         #self.cm = Data(CM.contiguous()).edge_index
         #self.cm = CM
 
-        return torch.cat([self.gat(x[i], CM) for i,CM in enumerate(CMs)], dim=0)
+        # TODO assert accuracy
+        #import pdb
+        #pdb.set_trace()
+        # BATCHED
+        perGIncrements = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(chainLengths).squeeze(1),dim=0)], dim=0)[:-1]
+        for i in range(len(protFileCodes)):
+            CMs[i] = CMs[i] + perGIncrements[i]
+        X = torch.cat(x,dim=0)
+        _CM = torch.cat(CMs, dim=1)
+        logits = self.gat(X, _CM)
+
+        # UNBATCHED
+        #indlogits = [self.gat(x[i],CM) for i,CM in enumerate(CMs)]
+        #logits = torch.cat(indlogits, dim=0)
+
+        return logits
 
 class PEwoGAT(nn.Module):
     def __init__(self, jsonSeqDataFile):
@@ -214,6 +229,8 @@ class ProteinEmbedder(nn.Module):
 
     def forward(self, protFileCodes):
         # Embed Part
+        #import pdb
+        #pdb.set_trace()
         seqs = [self.proteinSeqs[protFileCode] for protFileCode in protFileCodes]
         seqlens = [len(seq) for seq in seqs]
         with torch.no_grad():
@@ -281,138 +298,43 @@ class prototypeClassifier (nn.Module):
         
         return queryDists.T # [numExamples, 2]
 
-class BCwoPostCombination (nn.Module) :
-    def __init__ (self, batchSize, jsonSeqFile):
-        super().__init__()
-        self.batchSize = batchSize
-        self.radius = nn.Parameter(torch.ones(1))
-        self.model = PEwoPostCombination(jsonSeqFile)
-
-    def forward (self, posUniProtIDs, queryUniProtIDs):
-        posEmbeds = []
-        for batch_start in range(0, len(posUniProtIDs), self.batchSize):
-            batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
-            posEmbeds.append(self.model(batchIDs))
-        posEmbeddings = torch.cat(posEmbeds, dim=0)
-        posPrototype = torch.mean(posEmbeddings, dim=0)
-
-        queryEmbeds = []
-        for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
-            batchIDs = queryUniProtIDs[batch_start:batch_start+self.batchSize]
-            queryEmbeds.append(self.model(batchIDs))
-        queryEmbeddings = torch.cat(queryEmbeds, dim=0)
-
-        queryDists = queryEmbeddings - posPrototype.reshape((1,-1))
-        queryDists = torch.pow(queryDists, 2)
-        queryDists = torch.sum(queryDists, dim=1)
-        queryDists = torch.sqrt(queryDists) # [numExamples]
-
-        coeff = torch.log(torch.tensor([2]).to(posPrototype.device)) / self.radius
-        probInside = torch.exp(-queryDists * coeff)
-        probOutside = torch.ones(probInside.shape).to(posPrototype.device) - probInside
-        probs = torch.stack((probInside, probOutside), dim=1)
-        
-        return probs # [numExamples, 2]
-
-class BCwoDirectEmbedding (nn.Module) :
-    def __init__ (self, batchSize, jsonSeqFile):
-        super().__init__()
-        self.batchSize = batchSize
-        self.radius = nn.Parameter(torch.ones(1))
-        self.model = PEwoDirectEmbedding(jsonSeqFile)
-
-    def forward (self, posUniProtIDs, queryUniProtIDs):
-        posEmbeds = []
-        for batch_start in range(0, len(posUniProtIDs), self.batchSize):
-            batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
-            posEmbeds.append(self.model(batchIDs))
-        posEmbeddings = torch.cat(posEmbeds, dim=0)
-        posPrototype = torch.mean(posEmbeddings, dim=0)
-
-        queryEmbeds = []
-        for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
-            batchIDs = queryUniProtIDs[batch_start:batch_start+self.batchSize]
-            queryEmbeds.append(self.model(batchIDs))
-        queryEmbeddings = torch.cat(queryEmbeds, dim=0)
-
-        queryDists = queryEmbeddings - posPrototype.reshape((1,-1))
-        queryDists = torch.pow(queryDists, 2)
-        queryDists = torch.sum(queryDists, dim=1)
-        queryDists = torch.sqrt(queryDists) # [numExamples]
-
-        coeff = torch.log(torch.tensor([2]).to(posPrototype.device)) / self.radius
-        probInside = torch.exp(-queryDists * coeff)
-        probOutside = torch.ones(probInside.shape).to(posPrototype.device) - probInside
-        probs = torch.stack((probInside, probOutside), dim=1)
-        
-        return probs # [numExamples, 2]
-
-class BCwoGAT (nn.Module) :
-    def __init__ (self, batchSize, jsonSeqFile):
-        super().__init__()
-        self.batchSize = batchSize
-        self.radius = nn.Parameter(torch.ones(1))
-        self.model = PEwoGAT(jsonSeqFile)
-
-    def forward (self, posUniProtIDs, queryUniProtIDs):
-        posEmbeds = []
-        for batch_start in range(0, len(posUniProtIDs), self.batchSize):
-            batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
-            posEmbeds.append(self.model(batchIDs))
-        posEmbeddings = torch.cat(posEmbeds, dim=0)
-        posPrototype = torch.mean(posEmbeddings, dim=0)
-
-        queryEmbeds = []
-        for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
-            batchIDs = queryUniProtIDs[batch_start:batch_start+self.batchSize]
-            queryEmbeds.append(self.model(batchIDs))
-        queryEmbeddings = torch.cat(queryEmbeds, dim=0)
-
-        queryDists = queryEmbeddings - posPrototype.reshape((1,-1))
-        queryDists = torch.pow(queryDists, 2)
-        queryDists = torch.sum(queryDists, dim=1)
-        queryDists = torch.sqrt(queryDists) # [numExamples]
-
-        coeff = torch.log(torch.tensor([2]).to(posPrototype.device)) / self.radius
-        probInside = torch.exp(-queryDists * coeff)
-        probOutside = torch.ones(probInside.shape).to(posPrototype.device) - probInside
-        probs = torch.stack((probInside, probOutside), dim=1)
-        
-        return probs # [numExamples, 2]
-
 
 class ballClassifier (nn.Module) :
-    def __init__ (self, batchSize, jsonSeqFile):
+    def __init__ (self, batchSize, model=ProteinEmbedder('data/residues.json')):
         super().__init__()
         self.batchSize = batchSize
-        self.radius = nn.Parameter(torch.ones(1))
-        self.model = ProteinEmbedder(jsonSeqFile)
+        self.radius = 1
+        self.model = model  # Ablated options: PEwoGAT, PEwoDirectEmbedding, PEwoPostCombination
 
-    def forward (self, posUniProtIDs, queryUniProtIDs):
+    def get_prototype_and_query_dists(self, posUniProtIDs, queryUniProtIDs):
         posEmbeds = []
         for batch_start in range(0, len(posUniProtIDs), self.batchSize):
-            batchIDs = posUniProtIDs[batch_start:batch_start+self.batchSize]
+            batchIDs = posUniProtIDs[batch_start:batch_start + self.batchSize]
             posEmbeds.append(self.model(batchIDs))
         posEmbeddings = torch.cat(posEmbeds, dim=0)
         posPrototype = torch.mean(posEmbeddings, dim=0)
 
         queryEmbeds = []
         for batch_start in range(0, len(queryUniProtIDs), self.batchSize):
-            batchIDs = queryUniProtIDs[batch_start:batch_start+self.batchSize]
+            batchIDs = queryUniProtIDs[batch_start:batch_start + self.batchSize]
             queryEmbeds.append(self.model(batchIDs))
         queryEmbeddings = torch.cat(queryEmbeds, dim=0)
 
-        queryDists = queryEmbeddings - posPrototype.reshape((1,-1))
+        queryDists = queryEmbeddings - posPrototype.reshape((1, -1))
         queryDists = torch.pow(queryDists, 2)
         queryDists = torch.sum(queryDists, dim=1)
-        queryDists = torch.sqrt(queryDists) # [numExamples]
+        queryDists = torch.sqrt(queryDists)  # [numExamples]
+        return posPrototype, queryDists
+
+    def forward(self, posUniProtIDs, queryUniProtIDs):
+        posPrototype, queryDists = self.get_prototype_and_query_dists(posUniProtIDs, queryUniProtIDs)
 
         coeff = torch.log(torch.tensor([2]).to(posPrototype.device)) / self.radius
         probInside = torch.exp(-queryDists * coeff)
         probOutside = torch.ones(probInside.shape).to(posPrototype.device) - probInside
         probs = torch.stack((probInside, probOutside), dim=1)
         
-        return probs # [numExamples, 2]
+        return probs  # [numExamples, 2]
 
     
 
