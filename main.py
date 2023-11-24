@@ -86,7 +86,9 @@ def main(args):
     # The following require model loading
     if (args.model_type == "ball"):
         model = ballClassifier(batchSize=1) # BS is dummy, will be overwritten on load
-    model = model.load_state_dict(torch.load(args.model_path))
+        emb = ESMEmbedder(DEVICE).to(DEVICE)
+        model.model.emb = emb
+    model.load_state_dict(torch.load(args.model_path))
     model.to(DEVICE)
 
     if args.mode=="validate":
@@ -105,7 +107,7 @@ def train(hyper,train_df,val_df,DEVICE):
     ball = ballClassifier(batchSize=8).to(DEVICE)
     num_train_tasks, _ = train_df.shape
 
-    def initializeParams(module): ## TODO when you add in the pretrained model; ensure you do not initialize that
+    def initializeParams(module): ## NOTE when you add in the pretrained model; ensure you do not initialize that
         if isinstance(module, torch.nn.Linear):
             module.weight.data = torch.nn.init.xavier_normal_(module.weight.data, gain=torch.nn.init.calculate_gain('relu'))
             if module.bias is not None:
@@ -185,7 +187,7 @@ if __name__ == '__main__':
                         help='learning rate for the network')
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--run_name', type=str, default='temp')
-    parser.add_argument('--model_name', type=str, default='temp')
+    parser.add_argument('--model_type', type=str, default='temp')
     parser.add_argument('--model_path', type=str, default='temp')
 
     args = parser.parse_args()
