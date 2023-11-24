@@ -102,7 +102,7 @@ def main(args):
             pos_dists = queryDists[:3]
             neg_dists = queryDists[3:]
             loss = 0.5 * torch.sum(torch.pow(pos_dists, 2))
-            loss += 0.5 * torch.sum(torch.pow(torch.max(torch.Tensor([0]), ball.radius - neg_dists), 2))  # Doesn't add to loss if dist >= margin
+            loss += 0.5 * torch.sum(torch.pow(torch.max(torch.Tensor([0]).to(DEVICE), ball.radius - neg_dists), 2))  # Doesn't add to loss if dist >= margin
 
             loss.backward()
             optimizer.step()
