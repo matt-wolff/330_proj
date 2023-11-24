@@ -91,13 +91,10 @@ def main(args):
     ball.model.emb = emb
 
     optimizer = optim.AdamW(ball.parameters(), lr=lr)
-    train_losses, val_losses = [], []
     for epoch in range(num_epochs):
-        train_loss = 0
         for index, row in tqdm(train_df.iterrows(), desc=f'Training epoch: {epoch}'):  # Iterating over each task
             optimizer.zero_grad()
 
-            targets = torch.Tensor([1, 1, 1, 0, 0, 0]).to(DEVICE).to(torch.int64)
             support_ids, query_pos_ids, query_neg_ids = get_support_and_query_ids(row)
             _, queryDists = ball.get_prototype_and_query_dists(support_ids, query_pos_ids + query_neg_ids)
 
@@ -112,27 +109,22 @@ def main(args):
 
             i_step = num_train_tasks*epoch + index
             writer.add_scalar('loss/train', loss.item(), i_step)
-            accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
-            writer.add_scalar(
-                'train_accuracy/',
-                accuracy,
-                i_step
-            )
 
             if index % VAL_INTERVAL == 0:
                 print("Start Validation...")
                 with torch.no_grad():
-                    losses, accuracies = [], []
+                    val_losses, val_accuracies = [], []
                     for iter_val, row_val in tqdm(val_df.iterrows(), desc=f"Val Training Epoch {epoch}"):
                         support_ids_val, query_pos_ids_val, query_neg_ids_val = get_support_and_query_ids(row_val)
                         probs = ball(support_ids_val, query_pos_ids_val + query_neg_ids_val)
                         targets = torch.Tensor([1,1,1,0,0,0]).to(DEVICE).to(torch.int64)
                         loss = F.nll_loss(torch.log(probs), targets)
                         accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
-                        losses.append(loss)
-                        accuracies.append(accuracy)
-                    loss_val = torch.mean(losses)
-                    accuracies_val = torch.mean(accuracies)
+                        val_losses.append(loss.item())
+                        val_accuracies.append(accuracy)
+                        break
+                    loss_val = torch.mean(torch.Tensor(val_losses))
+                    accuracy_val = torch.mean(torch.Tensor(val_accuracies))
 
                     writer.add_scalar('loss/val', loss_val, i_step)
                     writer.add_scalar(
@@ -144,14 +136,13 @@ def main(args):
                 if (index + VAL_INTERVAL) % num_train_tasks > index % num_train_tasks:
                     torch.save(ball.state_dict(), f'ball_run2_epoch{epoch}.pt')
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Train a Ball Classifier!')
     parser.add_argument('--learning_rate', type=float, default=5e-4,
                         help='learning rate for the network')
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--run_name', type=str, default='temp')
-    
-    # parser.add_argument('--datadir', default='xxx', type=str, help='directory for datasets.')
 
     args = parser.parse_args()
 
