@@ -84,17 +84,18 @@ def main(args):
             train(hyper,train_df,val_df,DEVICE)
     
     # The following require model loading
-    if (args.model_type == "ball"):
-        model = ballClassifier(batchSize=1) # BS is dummy, will be overwritten on load
-        emb = ESMEmbedder(DEVICE).to(DEVICE)
-        model.model.emb = emb
-    model.load_state_dict(torch.load(args.model_path))
-    model.to(DEVICE)
+    if args.mode=="validate" or args.mode=="test":
+        if (args.model_type == "ball"):
+            model = ballClassifier(batchSize=1) # BS is dummy, will be overwritten on load
+            emb = ESMEmbedder(DEVICE).to(DEVICE)
+            model.model.emb = emb
+        model.load_state_dict(torch.load(args.model_path))
+        model.to(DEVICE)
 
-    if args.mode=="validate":
-        validate(model,val_df,DEVICE)
-    elif args.mode=="test":
-        test(model,test_df,DEVICE)
+        if args.mode=="validate":
+            validate(model,val_df,DEVICE)
+        elif args.mode=="test":
+            test(model,test_df,DEVICE)
        
 
 def train(hyper,train_df,val_df,DEVICE):
