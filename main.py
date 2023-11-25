@@ -191,10 +191,10 @@ def validate(model,ds,device,writer=None,i_step=None): # Writer requires i_step
     if writer is not None:
         writer.add_scalar('loss/val', loss, i_step)
         writer.add_scalar('val_accuracy/', acc, i_step)
-        writer.add_scalar('true_positive_val/')
-        writer.add_scalar('false_positive/')
-        writer.add_scalar('true_negative_val/')
-        writer.add_scalar('false_negative_val/')
+        writer.add_scalar('true_positive_val/', tp_val, i_step)
+        writer.add_scalar('false_positive/', fp_val, i_step)
+        writer.add_scalar('true_negative_val/', tn_val, i_step)
+        writer.add_scalar('false_negative_val/', fn_val, i_step)
 
 def test(model,ds,device):
     print("Starting Testing...")
@@ -206,12 +206,12 @@ def testcore(model,ds,keyword,device):
         for iter_val, row_val in tqdm(ds.iterrows(), desc=f"{keyword}", total=len(ds.index)):
             support_ids_val, query_pos_ids_val, query_neg_ids_val = get_support_and_query_ids(row_val)
             probs = model(support_ids_val, query_pos_ids_val + query_neg_ids_val)
-            targets = torch.Tensor([1,1,1,0,0,0]).to(device).to(torch.int64)
+            targets = torch.Tensor([0,0,0,1,1,1]).to(device).to(torch.int64)
             loss = F.nll_loss(torch.log(probs), targets)
             
             true_positives = torch.sum((torch.argmax(probs,dim=1)==targets)[targets==1]).type(torch.int64).item()
             false_negatives = 3 - true_positives
-            true_negatives = torch.sum((torch.argmax(probs,dim=1)==targets)[targets==1]).type(torch.int64).item()
+            true_negatives = torch.sum((torch.argmax(probs,dim=1)==targets)[targets==0]).type(torch.int64).item()
             false_positives = 3 - true_negatives
             accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
             
