@@ -27,7 +27,7 @@ class TaskDataset(Dataset):
 def train_each_task(args, df, split_type):
     query_accs = []
     for index, row in tqdm(df.iterrows(), desc=f'Training model for each {split_type} task', total=len(df.index)):
-        protein_embedder = ProteinEmbedder('data/residues.json')
+        protein_embedder = ProteinEmbedder('data/residues.json')  # TODO: Add hyper dict
         protein_embedder.emb = ESMEmbedder(args.device).to(args.device)
         model = nn.Sequential(
             protein_embedder,
@@ -48,15 +48,13 @@ def train_each_task(args, df, split_type):
         support_dataloader = DataLoader(TaskDataset(support_set), batch_size=args.batch_size)
 
         for epoch in range(args.epochs):
-            for batch in support_dataloader:
+            for batch in support_dataloader:  # TODO: Train until loss delta or max_epochs. Also train over 5 pos and 5 neg, not all pos
                 optimizer.zero_grad()
                 targets, ids = batch
                 logits = model(ids)
                 loss = F.cross_entropy(logits, targets)
                 loss.backward()
                 optimizer.step()
-                break
-            break
 
         query_pos = [(1, pos_id) for pos_id in pos_ids[-3:]]
         query_neg = [(0, neg_id) for neg_id in neg_ids[-3:]]
@@ -70,7 +68,6 @@ def train_each_task(args, df, split_type):
         query_acc = torch.sum(preds == torch.Tensor(query_targets)) / len(preds)
         query_accs.append(query_acc)
         torch.save(model.state_dict(), f'models/baseline/{split_type}_models/{split_type}_baseline_task_{index}.pt')
-        break
 
     avg_acc_str = f"Average accuracy on {split_type} tasks' query sets: {torch.mean(torch.Tensor(query_accs))}"
     print(avg_acc_str)
