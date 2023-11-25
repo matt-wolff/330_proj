@@ -13,7 +13,9 @@ import torch_geometric as pyg
 import torch
 from embeddings import ESMEmbedder
 from tqdm import tqdm
+from datetime import datetime
 import copy
+import json
 
 VAL_INTERVAL = 50
 DEVICE = 'cuda'
@@ -57,11 +59,11 @@ def getRangeCombos(space):
     return hypers
             
 
-def defaultHypers(learning_rate, run_name):
+def defaultHypers(learning_rate):#, run_name):
     hyper = dict()
     hyper["learning_rate"] = learning_rate
     hyper["num_epochs"] = 5
-    hyper["run_name"] = run_name
+    #hyper["run_name"] = run_name
     hyper["inmodel_type"] = ProteinEmbedder
     hyper["ball_radius"] = 1
     hyper["projection_space_dims"] = 32
@@ -92,19 +94,19 @@ def main(args):
         return hyperranges
 
     if args.mode=="train":
-        hyper = defaultHypers(args.learning_rate, args.run_name)
+        hyper = defaultHypers(args.learning_rate)#, args.run_name)
         train(hyper,train_df,val_df,DEVICE)
     elif args.mode=="hp_search":
-        hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate, args.run_name))
+        hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate))#, args.run_name))
         hyperranges["learning_rate"] = [1e-4,3e-4,1e-3]
         hyperranges["num_epochs"] = [5,10]
-        hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
+        #hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
         hypers = getRangeCombos(hyperranges)
         for hyper in hypers:
             train(hyper,train_df,val_df,DEVICE)
     elif args.mode=="ablate": # NOTE set these to ideal arguments except for inmodel_type
-        hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate, args.run_name))
-        hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
+        hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate))#, args.run_name))
+        #hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
         hyperranges["inmodel_type"] = [ProteinEmbedder, PEwoPostCombination,PEwoDirectEmbedding,PEwoGAT]
         hypers = getRangeCombos(hyperranges)
         for hyper in hypers:
@@ -113,7 +115,7 @@ def main(args):
     if args.mode=="validate" or args.mode=="test":
         # The following require model loading
         if (args.model_type == "ball"):
-            hyper = defaultHypers(args.learning_rate, args.run_name) # These parameters are dummy, they will get replaced upon load
+            hyper = defaultHypers(args.learning_rate)#, args.run_name) # These parameters are dummy, they will get replaced upon load
             
             model = ballClassifier(hyper, batchSize=1) # BS is dummy, will be overwritten on load
             emb = ESMEmbedder(DEVICE).to(DEVICE)
@@ -131,7 +133,13 @@ def main(args):
        
 
 def train(hyper,train_df,val_df,DEVICE):
-    log_dir = f'./logs/{hyper["run_name"]}'
+    run_name = "run_"+str(datetime.now()).replace(" ","_")
+    hyper["run_name"] = run_name
+    with open("modelhistory", 'a') as f:
+        f.write(",  ".join([str(a)+":"+str(b) for a,b in hyper.items()]))
+        f.write("\n")
+
+    log_dir = f'./logs/{run_name}'
     print(f'log_dir: {log_dir}')
     writer = tensorboard.SummaryWriter(log_dir=log_dir)
 
@@ -181,35 +189,54 @@ def train(hyper,train_df,val_df,DEVICE):
 
             if index % VAL_INTERVAL == 0:
                 validate(ball, val_df, DEVICE, writer, i_step)
-                if (index + VAL_INTERVAL) % num_train_tasks > index % num_train_tasks:
+                if (index + VAL_INTERVAL) // num_train_tasks > index // num_train_tasks:
                     torch.save(ball.state_dict(), f'ball_{hyper["run_name"]}_epoch{epoch}.pt')
 
 
 def validate(model,ds,device,writer=None,i_step=None): # Writer requires i_step
     print("Starting Validation...")
-    loss,acc = testcore(model,ds,"Validating",device)
+    loss,acc,tp_val,fn_val,tn_val,fp_val = testcore(model,ds,"Validating",device)
     if writer is not None:
         writer.add_scalar('loss/val', loss, i_step)
         writer.add_scalar('val_accuracy/', acc, i_step)
+        writer.add_scalar('true_positive_val/', tp_val, i_step)
+        writer.add_scalar('false_positive/', fp_val, i_step)
+        writer.add_scalar('true_negative_val/', tn_val, i_step)
+        writer.add_scalar('false_negative_val/', fn_val, i_step)
 
 def test(model,ds,device):
     print("Starting Testing...")
-    loss,acc = testcore(model,ds,"Testing",device)
+    loss,acc,tp_val,fn_val,tn_val,fp_val = testcore(model,ds,"Testing",device)
 
 def testcore(model,ds,keyword,device):
     with torch.no_grad():
-        val_losses, val_accuracies = [], []
+        val_losses, val_accuracies, tp, fn, tn, fp = [], [], [], [], [], []
         for iter_val, row_val in tqdm(ds.iterrows(), desc=f"{keyword}", total=len(ds.index)):
             support_ids_val, query_pos_ids_val, query_neg_ids_val = get_support_and_query_ids(row_val)
             probs = model(support_ids_val, query_pos_ids_val + query_neg_ids_val)
-            targets = torch.Tensor([1,1,1,0,0,0]).to(device).to(torch.int64)
+            targets = torch.Tensor([0,0,0,1,1,1]).to(device).to(torch.int64)
             loss = F.nll_loss(torch.log(probs), targets)
+            
+            true_positives = torch.sum((torch.argmax(probs,dim=1)==targets)[targets==1]).type(torch.int64).item()
+            false_negatives = 3 - true_positives
+            true_negatives = torch.sum((torch.argmax(probs,dim=1)==targets)[targets==0]).type(torch.int64).item()
+            false_positives = 3 - true_negatives
             accuracy = torch.mean((torch.argmax(probs,dim=1)==targets).float()).item()
+            
             val_losses.append(loss.item())
             val_accuracies.append(accuracy)
+            tp.append(true_positives)
+            fn.append(false_negatives)
+            tn.append(true_negatives)
+            fp.append(false_positives)
+
         loss_val = torch.mean(torch.Tensor(val_losses))
         accuracy_val = torch.mean(torch.Tensor(val_accuracies))
-    return loss_val,accuracy_val
+        tp_val = torch.mean(torch.Tensor(tp))
+        fn_val = torch.mean(torch.Tensor(fn))
+        tn_val = torch.mean(torch.Tensor(tn))
+        fp_val = torch.mean(torch.Tensor(fp))
+    return loss_val,accuracy_val,tp_val,fn_val,tn_val,fp_val
 
 
 if __name__ == '__main__':
