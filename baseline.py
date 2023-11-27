@@ -40,9 +40,7 @@ def train_each_task(args, hp, df, split_type):
         support_neg = [(1, neg_id) for neg_id in neg_ids[:-3]]
         support_set = support_pos + support_neg
         random.shuffle(support_set)
-        # support_dataloader = DataLoader(TaskDataset(support_set), batch_size=args.batch_size)
 
-        prev_loss = float('inf')
         for epoch in range(args.epochs):
             optimizer.zero_grad()
             targets, ids = zip(*support_set)
@@ -50,9 +48,6 @@ def train_each_task(args, hp, df, split_type):
             loss = F.cross_entropy(logits, torch.Tensor(list(targets)).long().to(args.device))
             loss.backward()
             optimizer.step()
-            if prev_loss - loss.item() < 0.1:
-                break
-            prev_loss = loss.item()
 
         query_pos = [(0, pos_id) for pos_id in pos_ids[-3:]]
         query_neg = [(1, neg_id) for neg_id in neg_ids[-3:]]
