@@ -9,65 +9,64 @@ import torch.nn.functional as F
 import torch
 import torch.optim as optim
 from embeddings import ESMEmbedder
-from torch.utils.data import DataLoader, Dataset
+from main import defaultHypers
+import os
+
+SEED = 42
+torch.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
+random.seed(SEED)
 
 
-class TaskDataset(Dataset):
-    def __init__(self, label_id_tups):
-        self.labels = [label for (label, protein_id) in label_id_tups]
-        self.ids = [protein_id for (label, protein_id) in label_id_tups]
-
-    def __len__(self):
-        return len(self.ids)
-
-    def __getitem__(self, idx):
-        return self.labels[idx], self.ids[idx]
-
-
-def train_each_task(args, df, split_type):
+def train_each_task(args, hp, df, split_type):
     query_accs = []
     for index, row in tqdm(df.iterrows(), desc=f'Training model for each {split_type} task', total=len(df.index)):
-        protein_embedder = ProteinEmbedder('data/residues.json')  # TODO: Add hyper dict
+        protein_embedder = ProteinEmbedder(hp, 'data/residues.json').to(args.device)
         protein_embedder.emb = ESMEmbedder(args.device).to(args.device)
         model = nn.Sequential(
             protein_embedder,
             nn.ReLU(),
-            nn.Linear(32, 2)
-        )
+            nn.Linear(hp["projection_space_dims"], 2)
+        ).to(args.device)
         optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
-        pos_ids = ast.literal_eval(row["Positive IDs"])
+        pos_ids = random.sample(ast.literal_eval(row["Positive IDs"]), k=8)
         neg_ids = ast.literal_eval(row["Negative IDs"])
+        neg_ids = random.sample(neg_ids, k=len(neg_ids) if len(neg_ids) < len(pos_ids) else 8)
         if len(neg_ids) < len(pos_ids):
             all_other = ast.literal_eval(row["All Other IDs"])
-            neg_ids += random.sample(all_other, k=len(pos_ids) - len(neg_ids))
+            neg_ids += random.sample(all_other, k=8 - len(neg_ids))
 
-        support_pos = [(1, pos_id) for pos_id in pos_ids[:-3]]
-        support_neg = [(0, neg_id) for neg_id in neg_ids[:-3]]
+        support_pos = [(0, pos_id) for pos_id in pos_ids[:-3]]
+        support_neg = [(1, neg_id) for neg_id in neg_ids[:-3]]
         support_set = support_pos + support_neg
         random.shuffle(support_set)
-        support_dataloader = DataLoader(TaskDataset(support_set), batch_size=args.batch_size)
+        # support_dataloader = DataLoader(TaskDataset(support_set), batch_size=args.batch_size)
 
+        prev_loss = float('inf')
         for epoch in range(args.epochs):
-            for batch in support_dataloader:  # TODO: Train until loss delta or max_epochs. Also train over 5 pos and 5 neg, not all pos
-                optimizer.zero_grad()
-                targets, ids = batch
-                logits = model(ids)
-                loss = F.cross_entropy(logits, targets)
-                loss.backward()
-                optimizer.step()
+            optimizer.zero_grad()
+            targets, ids = zip(*support_set)
+            logits = model(list(ids))
+            loss = F.cross_entropy(logits, torch.Tensor(list(targets)).long().to(args.device))
+            loss.backward()
+            optimizer.step()
+            if prev_loss - loss.item() < 0.1:
+                break
+            prev_loss = loss.item()
 
-        query_pos = [(1, pos_id) for pos_id in pos_ids[-3:]]
-        query_neg = [(0, neg_id) for neg_id in neg_ids[-3:]]
+        query_pos = [(0, pos_id) for pos_id in pos_ids[-3:]]
+        query_neg = [(1, neg_id) for neg_id in neg_ids[-3:]]
         query_set = query_pos + query_neg
         random.shuffle(query_set)
         query_ids = [protein_id for (label, protein_id) in query_set]
         query_targets = [label for (label, protein_id) in query_set]
 
         logits = model(query_ids)
-        preds = torch.argmax(logits, dim=1)
-        query_acc = torch.sum(preds == torch.Tensor(query_targets)) / len(preds)
+        preds = torch.argmax(logits, dim=1).to(args.device)
+        query_acc = torch.sum(preds == torch.Tensor(query_targets)).to(args.device) / len(preds)
         query_accs.append(query_acc)
         torch.save(model.state_dict(), f'models/baseline/{split_type}_models/{split_type}_baseline_task_{index}.pt')
+        break
 
     avg_acc_str = f"Average accuracy on {split_type} tasks' query sets: {torch.mean(torch.Tensor(query_accs))}"
     print(avg_acc_str)
@@ -76,10 +75,16 @@ def train_each_task(args, df, split_type):
 
 
 def main(args):
+    os.makedirs('models', exist_ok=True)
+    os.makedirs('models/baseline', exist_ok=True)
+    os.makedirs('models/baseline/test_models', exist_ok=True)
+    os.makedirs('models/baseline/val_models', exist_ok=True)
+
     val_df = pd.read_csv('data/val_go_tasks.csv', encoding='utf-8')
     test_df = pd.read_csv('data/test_go_tasks.csv', encoding='utf-8')
-    train_each_task(args, val_df, 'val')
-    train_each_task(args, test_df, 'test')
+    hp = defaultHypers(args.learning_rate)
+    train_each_task(args, hp, val_df, 'val')
+    train_each_task(args, hp, test_df, 'test')
 
 
 if __name__ == '__main__':
