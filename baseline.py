@@ -61,7 +61,6 @@ def train_each_task(args, hp, df, split_type):
         query_acc = torch.sum(preds == torch.Tensor(query_targets).to(args.device)) / len(preds)
         query_accs.append(query_acc)
         torch.save(model.state_dict(), f'models/baseline/{split_type}_models/{split_type}_baseline_task_{index}.pt')
-        break
 
     avg_acc_str = f"Average accuracy on {split_type} tasks' query sets: {torch.mean(torch.Tensor(query_accs))}"
     print(avg_acc_str)
