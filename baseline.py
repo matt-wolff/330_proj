@@ -58,7 +58,7 @@ def train_each_task(args, hp, df, split_type):
 
         logits = model(query_ids)
         preds = torch.argmax(logits, dim=1).to(args.device)
-        query_acc = torch.sum(preds == torch.Tensor(query_targets)).to(args.device) / len(preds)
+        query_acc = torch.sum(preds == torch.Tensor(query_targets).to(args.device)) / len(preds)
         query_accs.append(query_acc)
         torch.save(model.state_dict(), f'models/baseline/{split_type}_models/{split_type}_baseline_task_{index}.pt')
         break
