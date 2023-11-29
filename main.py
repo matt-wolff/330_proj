@@ -100,8 +100,12 @@ def main(args):
         train(hyper, train_df, val_df, device, (args.model_path, args.model_filename))
     elif args.mode=="hp_search":
         hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate))#, args.run_name))
-        hyperranges["ball_radius"] = [4] #[0.5,1,4]
-        hyperranges["projection_space_dims"] = [128]#[8,32,128]
+        hyperranges["ball_radius"] = [6,4,2]
+        hyperranges["postcomb_dim"] = [64,128]
+        hyperranges["projection_space_dims"] = [8]
+        hyperranges["learning_rate"] = [2e-4]
+        hyperranges["gat_layers"] = [2]
+        hyperranges["postcomb_layers"] = [4]
         #hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE
         hypers = getRangeCombos(hyperranges)
         for hyper in hypers:
@@ -174,7 +178,7 @@ def train(hyper, train_df, val_df, device, model_data=("", "")):
         if isinstance(module, pyg.nn.models.GAT):
             module.reset_parameters()
 
-    if model_filename is not None:
+    if model_filename is not "":
         emb = ESMEmbedder(device).to(device)
         ball.model.emb = emb
         if model_path != "":
