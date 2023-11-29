@@ -48,6 +48,7 @@ class GatFCM(torch.nn.Module): # GAT Form Contact Map
         # TODO assert accuracy
         #import pdb
         #pdb.set_trace()
+        
         # BATCHED
         perGIncrements = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(chainLengths).squeeze(1),dim=0)], dim=0)[:-1]
         for i in range(len(protFileCodes)):
