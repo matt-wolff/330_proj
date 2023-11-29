@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from Bio.UniProt.GOA import gafiterator
 import pandas as pd
 import json
+from tqdm import tqdm
 
 DATA_PATH = 'data'
 SEED = 42
@@ -13,7 +14,7 @@ SEED = 42
 pdb_parser = PDBParser()
 id_to_residues = {}
 lengths = []
-for filename in os.listdir(f'{DATA_PATH}/UP000005640_9606_HUMAN_v4'):
+for filename in tqdm(os.listdir(f'{DATA_PATH}/UP000005640_9606_HUMAN_v4')):
     if filename.endswith(".pdb"):
         uniprot = filename.split('-')[1]  # UniProtKB Object ID
         pdb_structure = pdb_parser.get_structure('foobar', f'{DATA_PATH}/UP000005640_9606_HUMAN_v4/{filename}')
@@ -33,7 +34,7 @@ with open(f"{DATA_PATH}/residues.json", "w") as f:
 function_to_protein = {}
 all_proteins = set()
 with open(f'{DATA_PATH}/goa_human.gaf', 'r') as handle:
-    for rec in gafiterator(handle):
+    for rec in tqdm(gafiterator(handle)):
         if rec['Aspect'] == 'F' and rec['DB'] == 'UniProtKB' and 'enables' in rec["Qualifier"] and rec['DB_Object_ID'] in id_to_residues.keys():
             if rec['GO_ID'] not in function_to_protein.keys():
                 function_to_protein[rec['GO_ID']] = {}
@@ -52,7 +53,7 @@ data = {
     "Negative IDs": [],
     "All Other IDs": []
 }
-for go_tag, go_dict in function_to_protein.items():
+for go_tag, go_dict in tqdm(function_to_protein.items()):
     pos_ids, neg_ids = go_dict['positive_ids'], go_dict['negative_ids']
     if len(pos_ids) >= 8:  # So that each task can have at least 5 pos support examples and 3 pos queries
         data["GO Functions"].append(go_tag)

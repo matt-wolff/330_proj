@@ -98,8 +98,8 @@ def main(args):
         train(hyper,train_df,val_df,DEVICE)
     elif args.mode=="hp_search":
         hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate))#, args.run_name))
-        hyperranges["learning_rate"] = [1e-4,3e-4,1e-3]
-        hyperranges["num_epochs"] = [5,10]
+        hyperranges["ball_radius"] = [4] #[0.5,1,4]
+        hyperranges["projection_space_dims"] = [128]#[8,32,128]
         #hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
         hypers = getRangeCombos(hyperranges)
         for hyper in hypers:
@@ -130,14 +130,21 @@ def main(args):
             validate(model,val_df,DEVICE)
         elif args.mode=="test":
             test(model,test_df,DEVICE)
-       
+        elif args.mode=="continue_train":
+            hyper=defaultHypers(args.learning_rate)
+            # TODO manual edit if desired
+            train(hyper,train_df,val_df,DEVICE,from_epoch=hyper["from_epoch"],trainingNumber=hyper["from_epoch"],use_model=model)
 
-def train(hyper,train_df,val_df,DEVICE):
-    run_name = "run_"+str(datetime.now()).replace(" ","_")
+def train(hyper,train_df,val_df,DEVICE,from_epoch=0,trainingNumber=None,use_model=None):
+    if trainingNumber is None:
+        run_name = "run_"+str(datetime.now()).replace(" ","_")
+    else:
+        run_name = "run_"+str(trainingNumber)
     hyper["run_name"] = run_name
-    with open("modelhistory", 'a') as f:
-        f.write(",  ".join([str(a)+":"+str(b) for a,b in hyper.items()]))
-        f.write("\n")
+    if trainingNumber is None:
+        with open("modelhistory", 'a') as f:
+            f.write(",  ".join([str(a)+":"+str(b) for a,b in hyper.items()]))
+            f.write("\n")
 
     log_dir = f'./logs/{run_name}'
     print(f'log_dir: {log_dir}')
@@ -146,9 +153,12 @@ def train(hyper,train_df,val_df,DEVICE):
     lr = hyper["learning_rate"]
     num_epochs = hyper["num_epochs"]
 
-    inmodel = hyper["inmodel_type"](hyper, "data/residues.json")
-    inmodel = inmodel.to(DEVICE)
-    ball = ballClassifier(hyper,batchSize=8,model=inmodel).to(DEVICE)
+    if use_model is None:
+        inmodel = hyper["inmodel_type"](hyper, "data/residues.json")
+        inmodel = inmodel.to(DEVICE)
+        ball = ballClassifier(hyper,batchSize=8,model=inmodel).to(DEVICE)
+    else:
+        ball = use_model
     num_train_tasks, _ = train_df.shape
 
     def initializeParams(module): ## NOTE when you add in the pretrained model; ensure you do not initialize that
@@ -162,13 +172,14 @@ def train(hyper,train_df,val_df,DEVICE):
         if isinstance(module, pyg.nn.models.GAT):
             module.reset_parameters()
 
-    ball.apply(initializeParams)
+    if use_model is None:
+        ball.apply(initializeParams)
     
-    emb = ESMEmbedder(DEVICE).to(DEVICE)
-    ball.model.emb = emb
+        emb = ESMEmbedder(DEVICE).to(DEVICE)
+        ball.model.emb = emb
 
     optimizer = optim.AdamW(ball.parameters(), lr=lr)
-    for epoch in range(num_epochs):
+    for epoch in range(from_epoch, num_epochs):
         for index, row in tqdm(train_df.iterrows(), desc=f'Training epoch: {epoch}', total=len(train_df.index)):  # Iterating over each task
             optimizer.zero_grad()
 
@@ -190,7 +201,7 @@ def train(hyper,train_df,val_df,DEVICE):
             if index % VAL_INTERVAL == 0:
                 validate(ball, val_df, DEVICE, writer, i_step)
                 if (index + VAL_INTERVAL) // num_train_tasks > index // num_train_tasks:
-                    torch.save(ball.state_dict(), f'ball_{hyper["run_name"]}_epoch{epoch}.pt')
+                    torch.save(ball.state_dict(), f'ball_{run_name}_epoch{epoch}.pt')
 
 
 def validate(model,ds,device,writer=None,i_step=None): # Writer requires i_step
@@ -240,7 +251,7 @@ def testcore(model,ds,keyword,device):
 
 
 if __name__ == '__main__':
-    modes = ['train',"hp_search",'validate','test','ablate']
+    modes = ['train',"hp_search",'validate','test','ablate',"continue_train"]
 
     parser = argparse.ArgumentParser('Train a Ball Classifier!')
     parser.add_argument('--mode', type=str, help=(' '.join(modes)))
