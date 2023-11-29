@@ -133,7 +133,7 @@ def main(args):
         elif args.mode=="continue_train":
             hyper=defaultHypers(args.learning_rate)
             # TODO manual edit if desired
-            train(hyper,train_df,val_df,DEVICE,from_epoch=hyper["from_epoch"],trainingNumber=hyper["from_epoch"],use_model=model)
+            train(hyper,train_df,val_df,DEVICE,from_epoch=hyper["from_epoch"],trainingNumber=hyper["from_training_number"],use_model=model)
 
 def train(hyper,train_df,val_df,DEVICE,from_epoch=0,trainingNumber=None,use_model=None):
     if trainingNumber is None:
