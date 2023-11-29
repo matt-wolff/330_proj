@@ -141,7 +141,7 @@ def train(hyper, train_df, val_df, device, model_data=("", "")):
     model_path, model_filename = model_data
     if model_filename:
         from_epoch = int(model_filename.split("_")[4][-4]) + 1  # If saved at epoch X, train from epoch X+1
-        run_name = model_filename[5:-7]  # Assuming starts with "ball_" and ends with "_epochX"
+        run_name = model_filename[5:-10]  # Assuming starts with "ball_" and ends with "_epochX.pt"
     else:
         from_epoch = 0
         run_name = "run_" + str(datetime.now()).replace(" ", "_")
