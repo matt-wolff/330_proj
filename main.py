@@ -98,6 +98,7 @@ def main(args):
     elif args.mode=="continue_train":
         hyper = defaultHypers(args.learning_rate)
         train(hyper, train_df, val_df, device, (args.model_path, args.model_filename))
+        quit()
     elif args.mode=="hp_search":
         hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate))#, args.run_name))
         hyperranges["ball_radius"] = [6,4,2]
@@ -117,12 +118,65 @@ def main(args):
         hypers = getRangeCombos(hyperranges)
         for hyper in hypers:
             train(hyper,train_df,val_df,device)
-
-    if args.mode=="validate" or args.mode=="test":
+    elif args.mode=="test_batch":
+        modelpaths = list()
+        with open(args.batchfile) as f:
+            line = f.readline()
+            while line:
+                modelpaths.append(line.strip())
+                line = f.readline()
+ 
+        modelhist = list()
+        with open("modelhistory") as f:
+            line = f.readline()
+            while line:
+                modelhist.append(line)
+                line = f.readline()
+        histdict = dict()
+        for hist in modelhist:
+            his = hist.split("  ")
+            runname = "ball_" + (":".join(his[-1].split(":")[1:])).strip()
+            his = his[:-1]
+            his = [attr[:-1] for attr in his]
+            his = [attr.split(":") for attr in his]
+            hyper = dict()
+            lu = {
+                "<class 'model.ProteinEmbedder'>":ProteinEmbedder,
+                "<class 'model.PEwoPostCombination'>":PEwoPostCombination,
+                "<class 'model.PEwoDirectEmbedding'>":PEwoDirectEmbedding,
+                "<class 'model.PEwoGAT'>":PEwoGAT,
+            }
+            for attrname, attrval in his:
+                if attrname == "inmodel_type":
+                    hyper[attrname] = lu[attrval]
+                else:
+                    hyper[attrname] = int(attrval) if attrval.isnumeric() else float(attrval)
+            histdict[runname]  = hyper
+        print("models extracted")
+    
+        for modelpath in tqdm(modelpaths):
+            runname = "_".join((modelpath.split("/")[-1]).split("_")[:-1])
+            #import pdb
+            #pdb.set_trace()
+            hyper = histdict[runname]
+            model = ballClassifier(hyper, batchSize=1)
+            emb = ESMEmbedder(device).to(device)
+            model.model.emb = emb
+            model.load_state_dict(torch.load(modelpath))
+            model.to(device)
+            test(model,test_df,device,savestr=modelpath)
+       
+    
+    if args.mode=="validate" or args.mode=="test" or args.mode=="continue_train":
         # The following require model loading
         if (args.model_type == "ball"):
             hyper = defaultHypers(args.learning_rate)#, args.run_name) # These parameters are dummy, they will get replaced upon load
-
+            # TODO manual edit if desired
+            hyper["from_epoch"]=4
+            hyper["from_training_number"]="2023-11-27_18:08:03.197355"
+            hyper["projection_space_dims"]=128
+            hyper["ball_radius"]=1
+            
             model = ballClassifier(hyper, batchSize=1) # BS is dummy, will be overwritten on load
             emb = ESMEmbedder(device).to(device)
             model.model.emb = emb
@@ -139,9 +193,15 @@ def main(args):
             validate(model,val_df,device)
         elif args.mode=="test":
             test(model,test_df,device)
+        elif args.mode=="continue_train":
+            #hyper=defaultHypers(args.learning_rate)
+            train(hyper,train_df,val_df,DEVICE,from_epoch=hyper["from_epoch"],trainingNumber=hyper["from_training_number"],use_model=model)
 
-
-def train(hyper, train_df, val_df, device, model_data=("", "")):
+def train(hyper,train_df,val_df,device,from_epoch=0,
+        model_data=("","")
+        ):#,trainingNumber=None,use_model=None,model_data=("","")):
+    #if trainingNumber is None:
+    #    run_name = "run_"+str(datetime.now()).replace(" ","_")
     model_path, model_filename = model_data
     if model_filename:
         from_epoch = int(model_filename.split("_")[4][-4]) + 1  # If saved at epoch X, train from epoch X+1
@@ -178,7 +238,7 @@ def train(hyper, train_df, val_df, device, model_data=("", "")):
         if isinstance(module, pyg.nn.models.GAT):
             module.reset_parameters()
 
-    if model_filename is not "":
+    if model_filename != "":
         emb = ESMEmbedder(device).to(device)
         ball.model.emb = emb
         if model_path != "":
@@ -227,9 +287,13 @@ def validate(model,ds,device,writer=None,i_step=None): # Writer requires i_step
         writer.add_scalar('true_negative_val/', tn_val, i_step)
         writer.add_scalar('false_negative_val/', fn_val, i_step)
 
-def test(model,ds,device):
+def test(model,ds,device,savestr=None):
     print("Starting Testing...")
     loss,acc,tp_val,fn_val,tn_val,fp_val = testcore(model,ds,"Testing",device)
+    if savestr != None:
+        with open("testRes", "a") as f:
+            f.write(str({savestr: (loss.item(),acc.item(),tp_val.item(),fn_val.item(),tn_val.item(),fp_val.item())}))
+            f.write("\n")
 
 def testcore(model,ds,keyword,device):
     with torch.no_grad():
@@ -263,14 +327,15 @@ def testcore(model,ds,keyword,device):
 
 
 if __name__ == '__main__':
-    modes = ['train',"continue_train","hp_search",'validate','test','ablate']
+    modes = ['train',"hp_search",'validate','test','ablate',"continue_train","test_batch"]
 
     parser = argparse.ArgumentParser('Train a Ball Classifier!')
     parser.add_argument('--mode', type=str, help=(' '.join(modes)))
+    parser.add_argument("--batchfile", type=str, default="ERROR")
     parser.add_argument('--learning_rate', type=float, default=5e-4,
                         help='learning rate for the network')
     parser.add_argument('--device', type=str, default='cuda')
-    parser.add_argument('--run_name', type=str, default='temp')
+    #parser.add_argument('--run_name', type=str, default='temp')
     parser.add_argument('--model_type', type=str, default='temp')
     parser.add_argument('--model_path', type=str, default='',
                         help="Path to file with saved model parameters. Ex: models/baseline/val_models")
