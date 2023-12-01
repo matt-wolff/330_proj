@@ -18,7 +18,6 @@ import copy
 import json
 
 VAL_INTERVAL = 50
-DEVICE = 'cuda'
 # TRAIN_PATH = 'data/go_tasks.csv'
 # VAL_PATH = 'data/go_tasks.csv'
 PATH = 'data/go_tasks.csv'
@@ -77,9 +76,9 @@ def defaultHypers(learning_rate):#, run_name):
 def main(args):
 
     if args.device == "cuda" and torch.cuda.is_available():
-        DEVICE = "cuda"
+        device = "cuda"
     else:
-        DEVICE = "cpu"
+        device = "cpu"
 
     train_df = pd.read_csv('data/train_go_tasks.csv', encoding='utf-8')
     val_df = pd.read_csv('data/val_go_tasks.csv', encoding='utf-8')
@@ -95,22 +94,30 @@ def main(args):
 
     if args.mode=="train":
         hyper = defaultHypers(args.learning_rate)#, args.run_name)
-        train(hyper,train_df,val_df,DEVICE)
+        train(hyper,train_df,val_df,device)
+    elif args.mode=="continue_train":
+        hyper = defaultHypers(args.learning_rate)
+        train(hyper, train_df, val_df, device, (args.model_path, args.model_filename))
+        quit()
     elif args.mode=="hp_search":
         hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate))#, args.run_name))
-        hyperranges["ball_radius"] = [4] #[0.5,1,4]
-        hyperranges["projection_space_dims"] = [128]#[8,32,128]
-        #hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
+        hyperranges["ball_radius"] = [6,4,2]
+        hyperranges["postcomb_dim"] = [64,128]
+        hyperranges["projection_space_dims"] = [8]
+        hyperranges["learning_rate"] = [2e-4]
+        hyperranges["gat_layers"] = [2]
+        hyperranges["postcomb_layers"] = [4]
+        #hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE
         hypers = getRangeCombos(hyperranges)
         for hyper in hypers:
-            train(hyper,train_df,val_df,DEVICE)
+            train(hyper,train_df,val_df,device)
     elif args.mode=="ablate": # NOTE set these to ideal arguments except for inmodel_type
         hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate))#, args.run_name))
-        #hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE 
+        #hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE
         hyperranges["inmodel_type"] = [ProteinEmbedder, PEwoPostCombination,PEwoDirectEmbedding,PEwoGAT]
         hypers = getRangeCombos(hyperranges)
         for hyper in hypers:
-            train(hyper,train_df,val_df,DEVICE)
+            train(hyper,train_df,val_df,device)
     elif args.mode=="test_batch":
         modelpaths = list()
         with open(args.batchfile) as f:
@@ -149,15 +156,15 @@ def main(args):
     
         for modelpath in tqdm(modelpaths):
             runname = "_".join((modelpath.split("/")[-1]).split("_")[:-1])
-            import pdb
-            pdb.set_trace()
+            #import pdb
+            #pdb.set_trace()
             hyper = histdict[runname]
             model = ballClassifier(hyper, batchSize=1)
-            emb = ESMEmbedder(DEVICE).to(DEVICE)
+            emb = ESMEmbedder(device).to(device)
             model.model.emb = emb
             model.load_state_dict(torch.load(modelpath))
-            model.to(DEVICE)
-            test(model,test_df,DEVICE,savestr=modelpath)
+            model.to(device)
+            test(model,test_df,device,savestr=modelpath)
        
     
     if args.mode=="validate" or args.mode=="test" or args.mode=="continue_train":
@@ -171,32 +178,42 @@ def main(args):
             hyper["ball_radius"]=1
             
             model = ballClassifier(hyper, batchSize=1) # BS is dummy, will be overwritten on load
-            emb = ESMEmbedder(DEVICE).to(DEVICE)
+            emb = ESMEmbedder(device).to(device)
             model.model.emb = emb
         else:
             raise Exception("Sought model type not found")
 
-        model.load_state_dict(torch.load(args.model_path))
-        model.to(DEVICE)
+        if args.model_path != "":
+            model.load_state_dict(torch.load(f'{args.model_path}/{args.model_filename}'))
+        else:
+            model.load_state_dict(torch.load(args.model_filename))
+        model.to(device)
 
-        if args.mode=="validate": 
-            validate(model,val_df,DEVICE)
+        if args.mode=="validate":
+            validate(model,val_df,device)
         elif args.mode=="test":
-            test(model,test_df,DEVICE)
+            test(model,test_df,device)
         elif args.mode=="continue_train":
             #hyper=defaultHypers(args.learning_rate)
             train(hyper,train_df,val_df,DEVICE,from_epoch=hyper["from_epoch"],trainingNumber=hyper["from_training_number"],use_model=model)
 
-def train(hyper,train_df,val_df,DEVICE,from_epoch=0,trainingNumber=None,use_model=None):
-    if trainingNumber is None:
-        run_name = "run_"+str(datetime.now()).replace(" ","_")
+def train(hyper,train_df,val_df,device,from_epoch=0,
+        model_data=("","")
+        ):#,trainingNumber=None,use_model=None,model_data=("","")):
+    #if trainingNumber is None:
+    #    run_name = "run_"+str(datetime.now()).replace(" ","_")
+    model_path, model_filename = model_data
+    if model_filename:
+        from_epoch = int(model_filename.split("_")[4][-4]) + 1  # If saved at epoch X, train from epoch X+1
+        run_name = model_filename[5:-10]  # Assuming starts with "ball_" and ends with "_epochX.pt"
     else:
-        run_name = "run_"+str(trainingNumber)
-    hyper["run_name"] = run_name
-    if trainingNumber is None:
+        from_epoch = 0
+        run_name = "run_" + str(datetime.now()).replace(" ", "_")
         with open("modelhistory", 'a') as f:
             f.write(",  ".join([str(a)+":"+str(b) for a,b in hyper.items()]))
             f.write("\n")
+
+    hyper["run_name"] = run_name
 
     log_dir = f'./logs/{run_name}'
     print(f'log_dir: {log_dir}')
@@ -205,12 +222,9 @@ def train(hyper,train_df,val_df,DEVICE,from_epoch=0,trainingNumber=None,use_mode
     lr = hyper["learning_rate"]
     num_epochs = hyper["num_epochs"]
 
-    if use_model is None:
-        inmodel = hyper["inmodel_type"](hyper, "data/residues.json")
-        inmodel = inmodel.to(DEVICE)
-        ball = ballClassifier(hyper,batchSize=8,model=inmodel).to(DEVICE)
-    else:
-        ball = use_model
+    inmodel = hyper["inmodel_type"](hyper, "data/residues.json")
+    inmodel = inmodel.to(device)
+    ball = ballClassifier(hyper,batchSize=8,model=inmodel).to(device)
     num_train_tasks, _ = train_df.shape
 
     def initializeParams(module): ## NOTE when you add in the pretrained model; ensure you do not initialize that
@@ -224,11 +238,18 @@ def train(hyper,train_df,val_df,DEVICE,from_epoch=0,trainingNumber=None,use_mode
         if isinstance(module, pyg.nn.models.GAT):
             module.reset_parameters()
 
-    if use_model is None:
-        ball.apply(initializeParams)
-    
-        emb = ESMEmbedder(DEVICE).to(DEVICE)
+    if model_filename != "":
+        emb = ESMEmbedder(device).to(device)
         ball.model.emb = emb
+        if model_path != "":
+            ball.load_state_dict(torch.load(f"{model_path}/{model_filename}"))
+        else:
+            ball.load_state_dict(torch.load(model_filename))
+    else:
+        ball.apply(initializeParams)
+        emb = ESMEmbedder(device).to(device)
+        ball.model.emb = emb
+    ball.to(device)
 
     optimizer = optim.AdamW(ball.parameters(), lr=lr)
     for epoch in range(from_epoch, num_epochs):
@@ -242,7 +263,7 @@ def train(hyper,train_df,val_df,DEVICE,from_epoch=0,trainingNumber=None,use_mode
             pos_dists = queryDists[:3]
             neg_dists = queryDists[3:]
             loss = 0.5 * torch.sum(torch.pow(pos_dists, 2))
-            loss += 0.5 * torch.sum(torch.pow(torch.max(torch.Tensor([0]).to(DEVICE), ball.radius - neg_dists), 2))  # Doesn't add to loss if dist >= margin
+            loss += 0.5 * torch.sum(torch.pow(torch.max(torch.Tensor([0]).to(device), ball.radius - neg_dists), 2))  # Doesn't add to loss if dist >= margin
             loss /= len(queryDists)
             loss.backward()
             optimizer.step()
@@ -251,9 +272,8 @@ def train(hyper,train_df,val_df,DEVICE,from_epoch=0,trainingNumber=None,use_mode
             writer.add_scalar('loss/train', loss.item(), i_step)
 
             if index % VAL_INTERVAL == 0:
-                validate(ball, val_df, DEVICE, writer, i_step)
-                if (index + VAL_INTERVAL) // num_train_tasks > index // num_train_tasks:
-                    torch.save(ball.state_dict(), f'ball_{run_name}_epoch{epoch}.pt')
+                validate(ball, val_df, device, writer, i_step)
+        torch.save(ball.state_dict(), f'ball_{run_name}_epoch{epoch}.pt')
 
 
 def validate(model,ds,device,writer=None,i_step=None): # Writer requires i_step
@@ -317,7 +337,10 @@ if __name__ == '__main__':
     parser.add_argument('--device', type=str, default='cuda')
     #parser.add_argument('--run_name', type=str, default='temp')
     parser.add_argument('--model_type', type=str, default='temp')
-    parser.add_argument('--model_path', type=str, default='temp')
+    parser.add_argument('--model_path', type=str, default='',
+                        help="Path to file with saved model parameters. Ex: models/baseline/val_models")
+    parser.add_argument('--model_filename', type=str, default='',
+                        help="Filename of PyTorch model. Ex: ball_run_2023-11-28_21:26:51.266950_epoch0.pt")
 
     args = parser.parse_args()
     assert(args.mode in modes)
