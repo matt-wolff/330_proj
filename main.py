@@ -64,8 +64,8 @@ def defaultHypers(learning_rate):#, run_name):
     hyper["num_epochs"] = 5
     #hyper["run_name"] = run_name
     hyper["inmodel_type"] = ProteinEmbedder
-    hyper["ball_radius"] = 1
-    hyper["projection_space_dims"] = 32
+    hyper["ball_radius"] = 4#1
+    hyper["projection_space_dims"] = 8#32
     hyper["gat_layers"] = 2
     hyper["gat_hidden_size"] = 512
     hyper["gat_dropout"] = 0.0
@@ -114,7 +114,8 @@ def main(args):
     elif args.mode=="ablate": # NOTE set these to ideal arguments except for inmodel_type
         hyperranges=hyperrangeWrap(defaultHypers(args.learning_rate))#, args.run_name))
         #hyperranges["run_name"] = [args.run_name] # I think this is a bad idea with hps NOTE
-        hyperranges["inmodel_type"] = [ProteinEmbedder, PEwoPostCombination,PEwoDirectEmbedding,PEwoGAT]
+        hyperranges["inmodel_type"] = [#ProteinEmbedder, 
+                                        PEwoPostCombination,PEwoDirectEmbedding,PEwoGAT]
         hypers = getRangeCombos(hyperranges)
         for hyper in hypers:
             train(hyper,train_df,val_df,device)
@@ -209,6 +210,8 @@ def train(hyper,train_df,val_df,device,from_epoch=0,
     else:
         from_epoch = 0
         run_name = "run_" + str(datetime.now()).replace(" ", "_")
+        hyper["run_name"] = run_name
+
         with open("modelhistory", 'a') as f:
             f.write(",  ".join([str(a)+":"+str(b) for a,b in hyper.items()]))
             f.write("\n")
