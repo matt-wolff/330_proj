@@ -160,7 +160,7 @@ def main(args):
             #import pdb
             #pdb.set_trace()
             hyper = histdict[runname]
-            model = ballClassifier(hyper, batchSize=1)
+            model = ballClassifier(hyper, batchSize=1, model=hyper["inmodel_type"](hyper, 'data/residues.json'))
             emb = ESMEmbedder(device).to(device)
             model.model.emb = emb
             model.load_state_dict(torch.load(modelpath))
